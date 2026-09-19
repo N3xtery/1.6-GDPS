@@ -37,14 +37,14 @@ public class OverlayUI {
     private static boolean logged_in = false;
     private static Button registerBtn, loginBtn, logoutBtn, saveBtn, loadBtn, reqBtn, percentBtn, songsBtn;
     private static Button copyBtn, rateBtn;
-    private static Button offsetBtn, origSongBtn, customSongBtn;
+    private static Button offsetBtn, origSongBtn, customSongBtn, colorBtn;
     private static boolean moderator = false;
     private static int percentageType = 0;
     public static Activity activity;
     public static SSLContext sslContext;
 
     public static native void sendSaveRequest(String user, String pass);
-    public static native void sendLoadRequest(String user, String pass);
+    public static native void sendLoadRequest(String user, String pass, boolean noLevels);
     public static native void sendReqRequest(String user, String pass);
     public static native void copyLevel();
     public static native void updatePercentageNative(int percentageType);
@@ -175,6 +175,13 @@ public class OverlayUI {
                 SongsDialog.updateSongsPath(songsDir.getAbsolutePath() + "/");
                 SongsDialog.setSongVars(songsDir, menuSong, practiceSong);
 
+                LinearLayout optionsRow = new LinearLayout(activity);
+                optionsRow.setOrientation(LinearLayout.HORIZONTAL);
+                FrameLayout.LayoutParams topRightParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT);
+                topRightParams.gravity = Gravity.TOP | Gravity.RIGHT;
+                optionsRow.setLayoutParams(topRightParams);
+
                 registerBtn = new Button(activity);
                 registerBtn.setText("Register");
                 loginBtn = new Button(activity);
@@ -192,20 +199,6 @@ public class OverlayUI {
                 logoutBtn = new Button(activity);
                 logoutBtn.setText("Log out");
 
-                offsetBtn = new Button(activity);
-                offsetBtn.setText("Set an offset");
-                origSongBtn = new Button(activity);
-                origSongBtn.setText("Original song");
-                customSongBtn = new Button(activity);
-                customSongBtn.setText("Custom song");
-
-                LinearLayout optionsRow = new LinearLayout(activity);
-                optionsRow.setOrientation(LinearLayout.HORIZONTAL);
-                FrameLayout.LayoutParams topRightParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT);
-                topRightParams.gravity = Gravity.TOP | Gravity.RIGHT;
-                optionsRow.setLayoutParams(topRightParams);
-
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT);
                 lp.rightMargin = dp(-3);
@@ -218,9 +211,6 @@ public class OverlayUI {
                 saveBtn.setLayoutParams(lp);
                 loadBtn.setLayoutParams(lp);
                 logoutBtn.setLayoutParams(lp);
-                offsetBtn.setLayoutParams(lp);
-                origSongBtn.setLayoutParams(lp);
-                customSongBtn.setLayoutParams(lp);
 
                 registerBtn.setOnClickListener(new View.OnClickListener() {
                     public void onClick(View view) {
@@ -265,6 +255,77 @@ public class OverlayUI {
                         showConfirmation("Are you sure you want to log out?");
                     }
                 });
+                registerBtn.setVisibility(View.GONE);
+                loginBtn.setVisibility(View.GONE);
+                percentBtn.setVisibility(View.GONE);
+                songsBtn.setVisibility(View.GONE);
+                reqBtn.setVisibility(View.GONE);
+                saveBtn.setVisibility(View.GONE);
+                loadBtn.setVisibility(View.GONE);
+                logoutBtn.setVisibility(View.GONE);
+
+                ViewGroup content = (ViewGroup)activity.findViewById(android.R.id.content);
+                optionsRow.addView(percentBtn);
+                optionsRow.addView(songsBtn);
+                optionsRow.addView(reqBtn);
+                optionsRow.addView(saveBtn);
+                optionsRow.addView(loadBtn);
+                optionsRow.addView(logoutBtn);
+                optionsRow.addView(registerBtn);
+                optionsRow.addView(loginBtn);
+                content.addView(optionsRow);
+
+                LinearLayout levelMenuRow = new LinearLayout(activity);
+                levelMenuRow.setOrientation(LinearLayout.VERTICAL);
+                FrameLayout.LayoutParams levelMenuParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT);
+                levelMenuParams.gravity = Gravity.CENTER | Gravity.LEFT;
+                levelMenuRow.setLayoutParams(levelMenuParams);
+
+                copyBtn = new Button(activity);
+                copyBtn.setText("Copy");
+                rateBtn = new Button(activity);
+                rateBtn.setText("Rate");
+
+                copyBtn.setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View view) {
+                        copyLevel();
+                    }
+                });
+                rateBtn.setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View view) {
+                        RateMenu.buildRateDialog();
+                    }
+                });
+
+                copyBtn.setVisibility(View.GONE);
+                rateBtn.setVisibility(View.GONE);
+
+                levelMenuRow.addView(copyBtn);
+                levelMenuRow.addView(rateBtn);
+                content.addView(levelMenuRow);
+
+                LinearLayout creatorRow = new LinearLayout(activity);
+                creatorRow.setOrientation(LinearLayout.HORIZONTAL);
+                FrameLayout.LayoutParams topLeftParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT);
+                topLeftParams.gravity = Gravity.TOP | Gravity.LEFT;
+                creatorRow.setLayoutParams(topLeftParams);
+
+                offsetBtn = new Button(activity);
+                offsetBtn.setText("Set an offset");
+                origSongBtn = new Button(activity);
+                origSongBtn.setText("Original song");
+                customSongBtn = new Button(activity);
+                customSongBtn.setText("Custom song");
+                colorBtn = new Button(activity);
+                colorBtn.setText("Set the color");
+
+                offsetBtn.setLayoutParams(lp);
+                origSongBtn.setLayoutParams(lp);
+                customSongBtn.setLayoutParams(lp);
+                colorBtn.setLayoutParams(lp);
+
                 offsetBtn.setOnClickListener(new View.OnClickListener() {
                     public void onClick(View view) {
                         SongsDialog.buildOffsetDialog();
@@ -282,60 +343,22 @@ public class OverlayUI {
                         SongsDialog.buildSongsDialog(true);
                     }
                 });
-                registerBtn.setVisibility(View.GONE);
-                loginBtn.setVisibility(View.GONE);
-                percentBtn.setVisibility(View.GONE);
-                songsBtn.setVisibility(View.GONE);
-                reqBtn.setVisibility(View.GONE);
-                saveBtn.setVisibility(View.GONE);
-                loadBtn.setVisibility(View.GONE);
-                logoutBtn.setVisibility(View.GONE);
+                colorBtn.setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View view) {
+                        ColorPicker.buildColorDialog();
+                    }
+                });
+
                 offsetBtn.setVisibility(View.GONE);
                 origSongBtn.setVisibility(View.GONE);
                 customSongBtn.setVisibility(View.GONE);
+                colorBtn.setVisibility(View.GONE);
 
-                ViewGroup content = (ViewGroup)activity.findViewById(android.R.id.content);
-                optionsRow.addView(percentBtn);
-                optionsRow.addView(songsBtn);
-                optionsRow.addView(reqBtn);
-                optionsRow.addView(saveBtn);
-                optionsRow.addView(loadBtn);
-                optionsRow.addView(logoutBtn);
-                optionsRow.addView(registerBtn);
-                optionsRow.addView(loginBtn);
-                optionsRow.addView(offsetBtn);
-                optionsRow.addView(origSongBtn);
-                optionsRow.addView(customSongBtn);
-                content.addView(optionsRow);
-
-                copyBtn = new Button(activity);
-                copyBtn.setText("Copy");
-                rateBtn = new Button(activity);
-                rateBtn.setText("Rate");
-
-                LinearLayout levelMenuRow = new LinearLayout(activity);
-                levelMenuRow.setOrientation(LinearLayout.VERTICAL);
-                FrameLayout.LayoutParams levelMenuParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT);
-                levelMenuParams.gravity = Gravity.CENTER | Gravity.LEFT;
-                levelMenuRow.setLayoutParams(levelMenuParams);
-
-                copyBtn.setOnClickListener(new View.OnClickListener() {
-                    public void onClick(View view) {
-                        copyLevel();
-                    }
-                });
-                rateBtn.setOnClickListener(new View.OnClickListener() {
-                    public void onClick(View view) {
-                        RateMenu.buildRateDialog();
-                    }
-                });
-                copyBtn.setVisibility(View.GONE);
-                rateBtn.setVisibility(View.GONE);
-
-                levelMenuRow.addView(copyBtn);
-                levelMenuRow.addView(rateBtn);
-                content.addView(levelMenuRow);
+                creatorRow.addView(offsetBtn);
+                creatorRow.addView(origSongBtn);
+                creatorRow.addView(customSongBtn);
+                creatorRow.addView(colorBtn);
+                content.addView(creatorRow);
             }
         });
     }
@@ -370,6 +393,12 @@ public class OverlayUI {
                     offsetBtn.setVisibility(visible ? View.VISIBLE : View.GONE);
                     if (!SongsDialog.getCurrentSongID().isEmpty()) origSongBtn.setVisibility(visible ? View.VISIBLE : View.GONE);
                     customSongBtn.setVisibility(visible ? View.VISIBLE : View.GONE);
+                }
+            });
+        } else if (button.equals("Color")) {
+            activity.runOnUiThread(new Runnable() {
+                public void run() {
+                    colorBtn.setVisibility(visible ? View.VISIBLE : View.GONE);
                 }
             });
         }
@@ -412,11 +441,20 @@ public class OverlayUI {
                             sendSaveRequest(user, pass);
                         } else if (message.contains("load")) {
                             loadBtn.setEnabled(false);
-                            sendLoadRequest(user, pass);
+                            sendLoadRequest(user, pass, false);
                         }
                         dialog.dismiss();
                     }
                 });
+
+                if (message.contains("load")) {
+                    builder.setNeutralButton("Don't load my levels", new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int which) {
+                            loadBtn.setEnabled(false);
+                            sendLoadRequest(user, pass, true);
+                        }
+                    });
+                }
 
                 builder.setNegativeButton("No", new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int which) {
@@ -491,6 +529,7 @@ public class OverlayUI {
         offsetBtn = null;
         origSongBtn = null;
         customSongBtn = null;
+        colorBtn = null;
         activity = null;
     }
 }

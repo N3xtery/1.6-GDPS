@@ -26,15 +26,17 @@ static const char* getReplacedSong(const char* song) {
     return song;
 }
 
+#if defined(__APPLE__)
+static int (*origPlayBackMusic)(void*, const char*, bool);
+static int hookPlayBackMusic(void* self, const char* song, bool flag) { return origPlayBackMusic(self, getReplacedSong(song), flag); }
+static int (*origPreloadMusic)(void*, const char*);
+static int hookPreloadMusic(void* self, const char* song) { return origPreloadMusic(self, getReplacedSong(song)); }
+#else
 static int (*origPlayBackMusic)(const char*, bool);
-static int hookPlayBackMusic(const char* song, bool flag) {
-    return origPlayBackMusic(getReplacedSong(song), flag);
-}
-
+static int hookPlayBackMusic(const char* song, bool flag) { return origPlayBackMusic(getReplacedSong(song), flag); }
 static int (*origPreloadMusic)(const char*);
-static int hookPreloadMusic(const char* song) {
-    return origPreloadMusic(getReplacedSong(song));
-}
+static int hookPreloadMusic(const char* song) { return origPreloadMusic(getReplacedSong(song)); }
+#endif
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_necytdamu_onesixgdps_SongsDialog_setCustomSong(JNIEnv* env, jclass, jstring idJava) {
@@ -71,7 +73,11 @@ Java_com_necytdamu_onesixgdps_SongsDialog_updateMenuPractSongNative(JNIEnv* env,
         if (songPath[0]) myMenuSong = strdup(songPath);
         else myMenuSong = nullptr;
         if (updateMenuNow != JNI_FALSE) queueOnCocosThread([]() {
+        #if defined(__APPLE__)
+            hookPlayBackMusic(nullptr, "menuLoop.mp3", true);
+        #else
             hookPlayBackMusic("menuLoop.mp3", true);
+        #endif
         });
     } else {
         if (myPractSong) free(myPractSong);
@@ -94,7 +100,10 @@ static void* levelCell;
 static const char* hookGetAudioTitle(int num) {
     uintptr_t caller = (uintptr_t)__builtin_return_address(0) - handle->base;
     int id = 0;
-#if defined(__i386__)
+#if defined(__APPLE__)
+    if (caller == 0x75ABD) id = getLevelLocalID(levelCell);
+    else if (caller == 0x7E947) id = getLevelLocalID(currentLevel);
+#elif defined(__i386__)
     if (caller == 0x189FE6) id = getLevelLocalID(levelCell);
     else if (caller == 0x1BDF6F) id = getLevelLocalID(currentLevel);
 #elif defined(__ARM_ARCH_7A__)
@@ -188,6 +197,18 @@ Java_com_necytdamu_onesixgdps_SongsDialog_playLevel(JNIEnv* env, jclass) {
 }
 
 void songscpp_init() {
+#if defined(__APPLE__)
+    MSHookFunction((void*)((base + 0x67810) | 1), (void*)hookPlayBackMusic, (void**)&origPlayBackMusic);
+    MSHookFunction((void*)((base + 0x677B8) | 1), (void*)hookPreloadMusic, (void**)&origPreloadMusic);
+    MSHookFunction((void*)((base + 0xCDA2C) | 1), (void*)hookGetAudioTitle, nullptr);
+    MSHookFunction((void*)((base + 0x6F7FC) | 1), (void*)hookLoadCellFromLevel, (void**)&origLoadCellFromLevel);
+    MSHookFunction((void*)((base + 0x6793C) | 1), (void*)hookSongSetOffset, (void**)&origSongSetOffset);
+    MSHookFunction((void*)((base + 0x7E310) | 1), (void*)hookEditLevelOnPlay, (void**)&origEditLevelOnPlay);
+    MSHookFunction((void*)((base + 0xBF21C) | 1), (void*)hookCustomLevelOnPlay, (void**)&origCustomLevelOnPlay);
+
+    uint16_t patch = 0xBF00;
+    mprotectPatch(0xE38DE, &patch, 2, true);
+#else
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "playBackgroundMusicJNI") | THUMB_BIT),
                   (void*)hookPlayBackMusic, (void**)&origPlayBackMusic);
 
@@ -224,5 +245,6 @@ void songscpp_init() {
 #else
     uint16_t patch = 0xBF00;
     mprotectPatch(0x13B530, &patch, 2, true);
+#endif
 #endif
 }

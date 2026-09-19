@@ -75,11 +75,6 @@ public class SongsDialog {
         int pad = OverlayUI.dp(8);
         layout.setPadding(pad, pad, pad, pad);
 
-        TextView labelOffset = new TextView(OverlayUI.activity);
-        labelOffset.setText("Song offset:");
-        labelOffset.setTextSize(12);
-        layout.addView(labelOffset);
-
         final EditText inputOffset = new EditText(OverlayUI.activity);
         inputOffset.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
         inputOffset.setHint("Offset");
@@ -99,6 +94,7 @@ public class SongsDialog {
                 setOffset(currentSongOffset);
             }
         });
+        builder.setNegativeButton("Cancel", null);
         builder.setCancelable(true);
 
         AlertDialog offsetDialog = builder.create();
@@ -270,6 +266,7 @@ public class SongsDialog {
                     connection.setRequestMethod("GET");
                     connection.setRequestProperty("User-Agent", "Mozilla/5.0");
                     connection.setRequestProperty("Accept", "text/html,*/*");
+                    connection.setRequestProperty("Accept-Language", "ru");
                     connection.setConnectTimeout(15000);
                     connection.setReadTimeout(15000);
 

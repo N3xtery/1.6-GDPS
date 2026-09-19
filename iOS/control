@@ -1,0 +1,9 @@
+Package: com.necytdamu.onesixgdps
+Name: 1.6 GDPS
+Version: 1.0.1
+Architecture: iphoneos-arm
+Description: 1.6 GDPS's mod
+Maintainer: N3xtery
+Author: N3xtery
+Section: Tweaks
+Depends: mobilesubstrate (>= 0.9.5000)

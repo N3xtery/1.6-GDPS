@@ -1,24 +1,39 @@
 #include "16gdps.h"
-#include <mutex>
 #include <zlib.h>
+#include <pthread.h>
 
 // ai-generated code
 
-std::mutex g_queueMutex;
-std::vector<std::function<void()>> g_mainThreadQueue;
+pthread_mutex_t g_queueMutex = PTHREAD_MUTEX_INITIALIZER;
 
-void queueOnCocosThread(std::function<void()> fn) {
-    std::lock_guard<std::mutex> lock(g_queueMutex);
-    g_mainThreadQueue.push_back(std::move(fn));
+class MutexLock {
+public:
+    MutexLock(pthread_mutex_t& m) : mutex(m) { pthread_mutex_lock(&mutex); }
+    ~MutexLock() { pthread_mutex_unlock(&mutex); }
+private:
+    pthread_mutex_t& mutex;
+    // non-copyable
+    MutexLock(const MutexLock&);
+    MutexLock& operator=(const MutexLock&);
+};
+
+std::vector<ICallable*> g_mainThreadQueue;
+void queueOnCocosThreadImpl(ICallable* fn) {
+    MutexLock lock(g_queueMutex);
+    g_mainThreadQueue.push_back(fn);
 }
+
 static int (*origScheduler)(void*, float);
 static int hookScheduler(void* self, float var) {
-    std::vector<std::function<void()>> toRun;
+    std::vector<ICallable*> tasks;
     {
-        std::lock_guard<std::mutex> lock(g_queueMutex);
-        toRun.swap(g_mainThreadQueue);
+        MutexLock lock(g_queueMutex);
+        tasks.swap(g_mainThreadQueue);
     }
-    for (auto& fn : toRun) fn();
+    for (size_t i = 0; i < tasks.size(); ++i) {
+        (*tasks[i])();
+        delete tasks[i];
+    }
     return origScheduler(self, var);
 }
 
@@ -44,6 +59,40 @@ std::string gzipCompress(const std::string& data) {
     deflateEnd(&zs);
 
     if (ret != Z_STREAM_END) return std::string();
+    return out;
+}
+
+std::string gzipDecompress(const char* data, size_t dataSize) {
+    std::string out;
+    out.resize(dataSize * 4 > 4096 ? dataSize * 4 : 4096);
+
+    z_stream strm{};
+    strm.next_in  = reinterpret_cast<Bytef*>(const_cast<char*>(data));
+    strm.avail_in = static_cast<uInt>(dataSize);
+
+    int ret = inflateInit2(&strm, 15 + 16);
+    if (ret != Z_OK) return {};
+
+    size_t totalOut = 0;
+    while (true) {
+        if (totalOut == out.size()) {
+            out.resize(out.size() * 2);
+        }
+        strm.next_out  = reinterpret_cast<Bytef*>(&out[totalOut]);
+        strm.avail_out = static_cast<uInt>(out.size() - totalOut);
+
+        ret = inflate(&strm, Z_NO_FLUSH);
+        totalOut = out.size() - strm.avail_out;
+
+        if (ret == Z_STREAM_END) break;
+        if (ret != Z_OK) {
+            inflateEnd(&strm);
+            return {};
+        }
+    }
+
+    inflateEnd(&strm);
+    out.resize(totalOut);
     return out;
 }
 
@@ -84,7 +133,7 @@ std::string base64Encode(const std::string& data) {
 
 std::string base64Decode(const char* s) {
     static const char* t = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-    std::string r;
+    std::string r = std::string();
     int v = 0, b = -8;
     for (; *s; s++) {
         if (*s == '=') break;
@@ -102,6 +151,10 @@ std::string base64Decode(const char* s) {
 }
 
 void utilscpp_init() {
+#if defined(__APPLE__)
+    MSHookFunction((void*)((base + 0x1A8B0) | 1), (void*)hookScheduler, (void**)&origScheduler);
+#else
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN7cocos2d11CCScheduler6updateEf") | THUMB_BIT),
                   (void*)hookScheduler, (void**)&origScheduler);
+#endif
 }

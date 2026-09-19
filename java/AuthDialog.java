@@ -1,11 +1,9 @@
 package com.necytdamu.onesixgdps;
 
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.text.InputType;
 import android.view.View;
-import android.view.ViewGroup;
 import android.text.InputFilter;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -58,7 +56,6 @@ public class AuthDialog {
         inputPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         inputPass.setHint("Password");
         inputPass.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-
         passLabelInput.addView(inputPass);
 
         passRow.addView(passLabelInput);
