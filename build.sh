@@ -21,7 +21,7 @@ apktool b "./bin/gd-unpacked" -o ./bin/temp_apk_unsigned.apk
 ../AndroidBuilding/build-tools/22.0.1/zipalign -v 4 ./bin/temp_apk_unsigned.apk ./bin/temp_apk_aligned.apk
 ../AndroidBuilding/build-tools/android-7.0/apksigner sign --key ./bin/apkeasytool.pk8 --cert ./bin/apkeasytool.pem --out "./bin/1.6 GDPS.apk" ./bin/temp_apk_aligned.apk
 rm -f ./bin/temp_apk_unsigned.apk ./bin/temp_apk_aligned.apk
-if [ "$1" == "x86" ]; then
+if [[ "$1" == "x86" || "$1" == "emu" ]]; then
     adb install -r "./bin/1.6 GDPS.apk"
 else
     adb install --bypass-low-target-sdk-block "./bin/1.6 GDPS.apk"

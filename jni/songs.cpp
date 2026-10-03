@@ -4,7 +4,7 @@ static char* myMenuSong = nullptr;
 static char* myPractSong = nullptr;
 static char* customSongsPath = nullptr;
 static bool practice = false;
-static const char* getReplacedSong(const char* song) {
+static std::string getReplacedSong(const char* song) {
     if (strcmp(song, "StayInsideMe.mp3") == 0) {
         practice = true;
         if (myPractSong) return myPractSong;
@@ -19,99 +19,42 @@ static const char* getReplacedSong(const char* song) {
                 std::string path(customSongsPath);
                 path.append(customSongs[i].second);
                 path.append(".mp3");
-                return path.c_str();
+                return path;
             }
         }
     }
-    return song;
+    return std::string(song);
 }
 
 #if defined(__APPLE__)
+static void (*stopBackMusic)();
 static int (*origPlayBackMusic)(void*, const char*, bool);
-static int hookPlayBackMusic(void* self, const char* song, bool flag) { return origPlayBackMusic(self, getReplacedSong(song), flag); }
+static int hookPlayBackMusic(void* self, const char* song, bool flag) { return origPlayBackMusic(self, getReplacedSong(song).c_str(), flag); }
 static int (*origPreloadMusic)(void*, const char*);
-static int hookPreloadMusic(void* self, const char* song) { return origPreloadMusic(self, getReplacedSong(song)); }
+static int hookPreloadMusic(void* self, const char* song) { return origPreloadMusic(self, getReplacedSong(song).c_str()); }
 #else
 static int (*origPlayBackMusic)(const char*, bool);
-static int hookPlayBackMusic(const char* song, bool flag) { return origPlayBackMusic(getReplacedSong(song), flag); }
+static int hookPlayBackMusic(const char* song, bool flag) { return origPlayBackMusic(getReplacedSong(song).c_str(), flag); }
 static int (*origPreloadMusic)(const char*);
-static int hookPreloadMusic(const char* song) { return origPreloadMusic(getReplacedSong(song)); }
+static int hookPreloadMusic(const char* song) { return origPreloadMusic(getReplacedSong(song).c_str()); }
 #endif
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_necytdamu_onesixgdps_SongsDialog_setCustomSong(JNIEnv* env, jclass, jstring idJava) {
-    const char* id = env->GetStringUTFChars(idJava, nullptr);
-    int localID = getLevelLocalID(currentLevel);
-    std::string idStr(id);
-    env->ReleaseStringUTFChars(idJava, id);
-    for (int i = 0; i < customSongs.size(); i++) {
-        if (customSongs[i].first == localID) {
-            customSongs[i].second = idStr;
-            return;
-        }
-    }
-    customSongs.emplace_back(localID, idStr);
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_necytdamu_onesixgdps_SongsDialog_setOffset(JNIEnv* env, jclass, jfloat offsetJava) {
-    int localID = getLevelLocalID(currentLevel);
-    for (int i = 0; i < songOffsets.size(); i++) {
-        if (songOffsets[i].first == localID) {
-            songOffsets[i].second = offsetJava;
-            return;
-        }
-    }
-    songOffsets.emplace_back(localID, offsetJava);
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_necytdamu_onesixgdps_SongsDialog_updateMenuPractSongNative(JNIEnv* env, jclass, jboolean isMenuSong, jstring songPathJava, jboolean updateMenuNow) {
-    const char* songPath = env->GetStringUTFChars(songPathJava, nullptr);
-    if (isMenuSong != JNI_FALSE) {
-        if (myMenuSong) free(myMenuSong);
-        if (songPath[0]) myMenuSong = strdup(songPath);
-        else myMenuSong = nullptr;
-        if (updateMenuNow != JNI_FALSE) queueOnCocosThread([]() {
-        #if defined(__APPLE__)
-            hookPlayBackMusic(nullptr, "menuLoop.mp3", true);
-        #else
-            hookPlayBackMusic("menuLoop.mp3", true);
-        #endif
-        });
-    } else {
-        if (myPractSong) free(myPractSong);
-        if (songPath[0]) {
-            myPractSong = strdup(songPath);
-        } else myPractSong = nullptr;
-    }
-    env->ReleaseStringUTFChars(songPathJava, songPath);
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_necytdamu_onesixgdps_SongsDialog_updateSongsPath(JNIEnv* env, jclass, jstring songPathJava) {
-    const char* songPath = env->GetStringUTFChars(songPathJava, nullptr);
-    if (customSongsPath) free(customSongsPath);
-    customSongsPath = strdup(songPath);
-    env->ReleaseStringUTFChars(songPathJava, songPath);
-}
 
 static void* levelCell;
 static const char* hookGetAudioTitle(int num) {
-    uintptr_t caller = (uintptr_t)__builtin_return_address(0) - handle->base;
     int id = 0;
 #if defined(__APPLE__)
+    uintptr_t caller = (uintptr_t)__builtin_return_address(0) - base;
     if (caller == 0x75ABD) id = getLevelLocalID(levelCell);
     else if (caller == 0x7E947) id = getLevelLocalID(currentLevel);
-#elif defined(__i386__)
+#else
+    uintptr_t caller = (uintptr_t)__builtin_return_address(0) - handle->base;
+#if defined(__i386__)
     if (caller == 0x189FE6) id = getLevelLocalID(levelCell);
     else if (caller == 0x1BDF6F) id = getLevelLocalID(currentLevel);
-#elif defined(__ARM_ARCH_7A__)
+#else
     if (caller == 0x140DB3) id = getLevelLocalID(levelCell);
     else if (caller == 0x15A533) id = getLevelLocalID(currentLevel);
-#else
-    if (caller == 0x142D2B) id = getLevelLocalID(levelCell);
-    else if (caller == 0x15CF2D) id = getLevelLocalID(currentLevel);
+#endif
 #endif
     if (id) for (int i = 0; i < customSongs.size(); i++) if (customSongs[i].first == id) {
         if (customSongs[i].second != "") return "Custom";
@@ -145,8 +88,13 @@ static int hookLoadCellFromLevel(void* self, void* level) {
     return origLoadCellFromLevel(self, level);
 }
 
+#if defined(__APPLE__)
+static int (*origSongSetOffset)(void*, float);
+static int hookSongSetOffset(void* self, float time) {
+#else
 static int (*origSongSetOffset)(float);
 static int hookSongSetOffset(float time) {
+#endif
     if (currentLevel && !practice) {
         int localID = getLevelLocalID(currentLevel);
         for (int i = 0; i < songOffsets.size(); i++) if (songOffsets[i].first == localID) {
@@ -154,7 +102,11 @@ static int hookSongSetOffset(float time) {
             break;
         }
     }
+#if defined(__APPLE__)
+    return origSongSetOffset(self, time);
+#else
     return origSongSetOffset(time);
+#endif
 }
 
 static bool isSongDownloaded() {
@@ -169,7 +121,7 @@ static bool isSongDownloaded() {
             fclose(f);
             break;
         } else {
-            buildPlayLoadingDialog(customSongs[i].second.c_str());
+            buildLoadingDialog(customSongs[i].second.c_str());
             return false;
         }
     }
@@ -188,16 +140,98 @@ static void hookCustomLevelOnPlay(void* self) {
     if (isSongDownloaded()) origCustomLevelOnPlay(self);
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_necytdamu_onesixgdps_SongsDialog_playLevel(JNIEnv* env, jclass) {
+void setCustomSong(const char* id) {
+    int localID = getLevelLocalID(currentLevel);
+    std::string idStr(id);
+    for (int i = 0; i < customSongs.size(); i++) {
+        if (customSongs[i].first == localID) {
+            customSongs[i].second = idStr;
+            return;
+        }
+    }
+    customSongs.push_back(std::make_pair(localID, idStr));
+}
+
+void setOffset(float offset) {
+    int localID = getLevelLocalID(currentLevel);
+    for (int i = 0; i < songOffsets.size(); i++) {
+        if (songOffsets[i].first == localID) {
+            songOffsets[i].second = offset;
+            return;
+        }
+    }
+    songOffsets.push_back(std::make_pair(localID, offset));
+}
+
+void updateMenuPractSongNative(bool isMenuSong, const char* songPath, bool updateMenuNow) {
+    if (isMenuSong) {
+        if (myMenuSong) free(myMenuSong);
+        if (songPath[0]) myMenuSong = strdup(songPath);
+        else myMenuSong = nullptr;
+        if (updateMenuNow) queueOnCocosThread([]() {
+        #if defined(__APPLE__)
+            stopBackMusic();
+            hookPlayBackMusic(nullptr, "menuLoop.mp3", true);
+        #else
+            hookPlayBackMusic("menuLoop.mp3", true);
+        #endif
+        });
+    } else {
+        if (myPractSong) free(myPractSong);
+        if (songPath[0]) {
+            myPractSong = strdup(songPath);
+        } else myPractSong = nullptr;
+    }
+}
+
+void updateSongsPathNative(const char* songPath) {
+    if (customSongsPath) free(customSongsPath);
+    customSongsPath = strdup(songPath);
+}
+
+void playLevel() {
     queueOnCocosThread([]() {
         if (currentLevelLayer) origCustomLevelOnPlay(currentLevelLayer);
         else origEditLevelOnPlay(currentEditLevelLayer);
     });
 }
 
+#ifndef __APPLE__
+extern "C" JNIEXPORT void JNICALL
+Java_com_necytdamu_onesixgdps_SongsDialog_setCustomSong(JNIEnv* env, jclass, jstring idJava) {
+    const char* id = env->GetStringUTFChars(idJava, nullptr);
+    setCustomSong(id);
+    env->ReleaseStringUTFChars(idJava, id);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_necytdamu_onesixgdps_SongsDialog_setOffset(JNIEnv* env, jclass, jfloat offsetJava) {
+    setOffset(offsetJava);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_necytdamu_onesixgdps_SongsDialog_updateMenuPractSongNative(JNIEnv* env, jclass, jboolean isMenuSong, jstring songPathJ, jboolean updateMenuNow) {
+    const char* songPath = env->GetStringUTFChars(songPathJ, nullptr);
+    updateMenuPractSongNative(isMenuSong != JNI_FALSE, songPath, updateMenuNow != JNI_FALSE);
+    env->ReleaseStringUTFChars(songPathJ, songPath);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_necytdamu_onesixgdps_SongsDialog_updateSongsPathNative(JNIEnv* env, jclass, jstring songPathJava) {
+    const char* songPath = env->GetStringUTFChars(songPathJava, nullptr);
+    updateSongsPathNative(songPath);
+    env->ReleaseStringUTFChars(songPathJava, songPath);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_necytdamu_onesixgdps_SongsDialog_playLevel(JNIEnv* env, jclass) {
+    playLevel();
+}
+#endif
+
 void songscpp_init() {
 #if defined(__APPLE__)
+    stopBackMusic = (void(*)())((base + 0x6786C) | 1);
     MSHookFunction((void*)((base + 0x67810) | 1), (void*)hookPlayBackMusic, (void**)&origPlayBackMusic);
     MSHookFunction((void*)((base + 0x677B8) | 1), (void*)hookPreloadMusic, (void**)&origPreloadMusic);
     MSHookFunction((void*)((base + 0xCDA2C) | 1), (void*)hookGetAudioTitle, nullptr);
@@ -239,12 +273,9 @@ void songscpp_init() {
 #if defined(__i386__)
     uint64_t patch = 0x909090909090;
     mprotectPatch(0x178F14, &patch, 6, true);
-#elif defined(__ARM_ARCH_7A__)
-    uint16_t patch = 0xBF00;
-    mprotectPatch(0x13991C, &patch, 2, true);
 #else
     uint16_t patch = 0xBF00;
-    mprotectPatch(0x13B530, &patch, 2, true);
+    mprotectPatch(0x13991C, &patch, 2, true);
 #endif
 #endif
 }

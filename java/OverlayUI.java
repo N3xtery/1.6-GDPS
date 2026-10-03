@@ -9,6 +9,9 @@ import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.EditText;
+import android.text.InputType;
+import android.widget.TextView;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -35,9 +38,10 @@ public class OverlayUI {
     private static String user;
     private static String pass;
     private static boolean logged_in = false;
-    private static Button registerBtn, loginBtn, logoutBtn, saveBtn, loadBtn, reqBtn, percentBtn, songsBtn;
+    private static Button registerBtn, loginBtn, logoutBtn, saveBtn, loadBtn, reqBtn, percentBtn, songsBtn, gmdImportBtn;
     private static Button copyBtn, rateBtn;
-    private static Button offsetBtn, origSongBtn, customSongBtn, colorBtn;
+    private static Button offsetBtn, origSongBtn, customSongBtn, colorBtn, gmdExportBtn;
+    private static TextView lengthLabel;
     private static boolean moderator = false;
     private static int percentageType = 0;
     public static Activity activity;
@@ -48,6 +52,10 @@ public class OverlayUI {
     public static native void sendReqRequest(String user, String pass);
     public static native void copyLevel();
     public static native void updatePercentageNative(int percentageType);
+    public static native void importGmd(String path);
+    public static native void exportGmd(String path);
+    public static native String getCurrentLevelName();
+    public static native int getCurrentLevelLength();
 
     public static void setUser(String user) { OverlayUI.user = user; }
     public static String getUser() { return user; }
@@ -56,7 +64,7 @@ public class OverlayUI {
 
     public static int dp(int value) {
         float density = activity.getResources().getDisplayMetrics().density;
-        return (int)(value * density + 0.5f);
+        return (int)(value * density + (value >= 0 ? 0.5f : -0.5f));
     }
 
     public static Properties loadConfig() {
@@ -152,7 +160,25 @@ public class OverlayUI {
                         if (!songsDir.isDirectory()) songsDir = null;
                     }
                     menuSong = props.getProperty("menuSong");
+                    if (!menuSong.isEmpty()) {
+                        File menuSongFile = new File(songsDir, menuSong + ".mp3");
+                        if (menuSongFile.exists()) SongsDialog.updateMenuPractSongNative(true, menuSongFile.getAbsolutePath(), false);
+                        else {
+                            menuSong = "";
+                            props.setProperty("menuSong", "");
+                            saveConfig(props);
+                        }
+                    }
                     practiceSong = props.getProperty("practiceSong");
+                    if (!practiceSong.isEmpty()) {
+                        File practSongFile = new File(songsDir, practiceSong + ".mp3");
+                        if (practSongFile.exists()) SongsDialog.updateMenuPractSongNative(false, practSongFile.getAbsolutePath(), false);
+                        else {
+                            practiceSong = "";
+                            props.setProperty("practiceSong", "");
+                            saveConfig(props);
+                        }
+                    }
                 } else {
                     Properties props = new Properties();
                     props.setProperty("username", "");
@@ -168,11 +194,7 @@ public class OverlayUI {
                     songsDir = new File(mainDir, "songs");
                     if (!songsDir.exists()) songsDir.mkdir();
                 }
-                File menuSongFile = new File(songsDir, menuSong + ".mp3");
-                if (menuSongFile.exists()) SongsDialog.updateMenuPractSongNative(true, menuSongFile.getAbsolutePath(), false);
-                File practSongFile = new File(songsDir, practiceSong + ".mp3");
-                if (practSongFile.exists()) SongsDialog.updateMenuPractSongNative(false, practSongFile.getAbsolutePath(), false);
-                SongsDialog.updateSongsPath(songsDir.getAbsolutePath() + "/");
+                SongsDialog.updateSongsPathNative(songsDir.getAbsolutePath() + "/");
                 SongsDialog.setSongVars(songsDir, menuSong, practiceSong);
 
                 LinearLayout optionsRow = new LinearLayout(activity);
@@ -182,14 +204,21 @@ public class OverlayUI {
                 topRightParams.gravity = Gravity.TOP | Gravity.RIGHT;
                 optionsRow.setLayoutParams(topRightParams);
 
-                registerBtn = new Button(activity);
-                registerBtn.setText("Register");
-                loginBtn = new Button(activity);
-                loginBtn.setText("Log in");
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+                lp.rightMargin = dp(-3);
+                lp.leftMargin = dp(-3);
+
+                gmdImportBtn = new Button(activity);
+                gmdImportBtn.setText(".gmd");
                 percentBtn = new Button(activity);
                 updatePercentage();
                 songsBtn = new Button(activity);
                 songsBtn.setText("Songs");
+                registerBtn = new Button(activity);
+                registerBtn.setText("Register");
+                loginBtn = new Button(activity);
+                loginBtn.setText("Log in");
                 reqBtn = new Button(activity);
                 reqBtn.setText("Req");
                 saveBtn = new Button(activity);
@@ -199,27 +228,13 @@ public class OverlayUI {
                 logoutBtn = new Button(activity);
                 logoutBtn.setText("Log out");
 
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-                lp.rightMargin = dp(-3);
-                lp.leftMargin = dp(-3);
-                loginBtn.setLayoutParams(lp);
-                registerBtn.setLayoutParams(lp);
-                percentBtn.setLayoutParams(lp);
-                songsBtn.setLayoutParams(lp);
-                reqBtn.setLayoutParams(lp);
-                saveBtn.setLayoutParams(lp);
-                loadBtn.setLayoutParams(lp);
-                logoutBtn.setLayoutParams(lp);
-
-                registerBtn.setOnClickListener(new View.OnClickListener() {
+                gmdImportBtn.setOnClickListener(new View.OnClickListener() {
                     public void onClick(View view) {
-                        AuthDialog.buildAuthDialog(true);
-                    }
-                });
-                loginBtn.setOnClickListener(new View.OnClickListener() {
-                    public void onClick(View view) {
-                        AuthDialog.buildAuthDialog(false);
+                        new FileBrowser("gmd", false, new FileBrowser.Callback() {
+                            public void onSelected(File file) {
+                                importGmd(file.getAbsolutePath());
+                            }
+                        });
                     }
                 });
                 percentBtn.setOnClickListener(new View.OnClickListener() {
@@ -232,6 +247,16 @@ public class OverlayUI {
                 songsBtn.setOnClickListener(new View.OnClickListener() {
                     public void onClick(View view) {
                         SongsDialog.buildSongsDialog(false);
+                    }
+                });
+                registerBtn.setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View view) {
+                        AuthDialog.buildAuthDialog(true);
+                    }
+                });
+                loginBtn.setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View view) {
+                        AuthDialog.buildAuthDialog(false);
                     }
                 });
                 reqBtn.setOnClickListener(new View.OnClickListener() {
@@ -255,24 +280,26 @@ public class OverlayUI {
                         showConfirmation("Are you sure you want to log out?");
                     }
                 });
-                registerBtn.setVisibility(View.GONE);
-                loginBtn.setVisibility(View.GONE);
+                gmdImportBtn.setVisibility(View.GONE);
                 percentBtn.setVisibility(View.GONE);
                 songsBtn.setVisibility(View.GONE);
+                registerBtn.setVisibility(View.GONE);
+                loginBtn.setVisibility(View.GONE);
                 reqBtn.setVisibility(View.GONE);
                 saveBtn.setVisibility(View.GONE);
                 loadBtn.setVisibility(View.GONE);
                 logoutBtn.setVisibility(View.GONE);
 
                 ViewGroup content = (ViewGroup)activity.findViewById(android.R.id.content);
-                optionsRow.addView(percentBtn);
-                optionsRow.addView(songsBtn);
-                optionsRow.addView(reqBtn);
-                optionsRow.addView(saveBtn);
-                optionsRow.addView(loadBtn);
-                optionsRow.addView(logoutBtn);
-                optionsRow.addView(registerBtn);
-                optionsRow.addView(loginBtn);
+                optionsRow.addView(gmdImportBtn, lp);
+                optionsRow.addView(percentBtn, lp);
+                optionsRow.addView(songsBtn, lp);
+                optionsRow.addView(registerBtn, lp);
+                optionsRow.addView(loginBtn, lp);
+                optionsRow.addView(reqBtn, lp);
+                optionsRow.addView(saveBtn, lp);
+                optionsRow.addView(loadBtn, lp);
+                optionsRow.addView(logoutBtn, lp);
                 content.addView(optionsRow);
 
                 LinearLayout levelMenuRow = new LinearLayout(activity);
@@ -305,26 +332,27 @@ public class OverlayUI {
                 levelMenuRow.addView(rateBtn);
                 content.addView(levelMenuRow);
 
-                LinearLayout creatorRow = new LinearLayout(activity);
-                creatorRow.setOrientation(LinearLayout.HORIZONTAL);
+                LinearLayout creatorColumn = new LinearLayout(activity);
+                creatorColumn.setOrientation(LinearLayout.VERTICAL);
                 FrameLayout.LayoutParams topLeftParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT,
                     FrameLayout.LayoutParams.WRAP_CONTENT);
                 topLeftParams.gravity = Gravity.TOP | Gravity.LEFT;
+                creatorColumn.setLayoutParams(topLeftParams);
+
+                LinearLayout creatorRow = new LinearLayout(activity);
+                creatorRow.setOrientation(LinearLayout.HORIZONTAL);
                 creatorRow.setLayoutParams(topLeftParams);
 
                 offsetBtn = new Button(activity);
-                offsetBtn.setText("Set an offset");
+                offsetBtn.setText("Offset");
                 origSongBtn = new Button(activity);
                 origSongBtn.setText("Original song");
                 customSongBtn = new Button(activity);
                 customSongBtn.setText("Custom song");
                 colorBtn = new Button(activity);
-                colorBtn.setText("Set the color");
-
-                offsetBtn.setLayoutParams(lp);
-                origSongBtn.setLayoutParams(lp);
-                customSongBtn.setLayoutParams(lp);
-                colorBtn.setLayoutParams(lp);
+                colorBtn.setText("RGB");
+                gmdExportBtn = new Button(activity);
+                gmdExportBtn.setText(".gmd");
 
                 offsetBtn.setOnClickListener(new View.OnClickListener() {
                     public void onClick(View view) {
@@ -348,25 +376,79 @@ public class OverlayUI {
                         ColorPicker.buildColorDialog();
                     }
                 });
+                gmdExportBtn.setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View view) {
+                        LinearLayout layout = new LinearLayout(OverlayUI.activity);
+                        layout.setOrientation(LinearLayout.VERTICAL);
+                        layout.setFocusableInTouchMode(true);
+                        int pad = OverlayUI.dp(8);
+                        layout.setPadding(pad, pad, pad, OverlayUI.dp(3));
+
+                        final EditText input = new EditText(OverlayUI.activity);
+                        input.setInputType(InputType.TYPE_CLASS_TEXT);
+                        input.setText(getCurrentLevelName() + ".gmd");
+                        input.setGravity(Gravity.CENTER);
+                        layout.addView(input);
+
+                        AlertDialog.Builder builder = new AlertDialog.Builder(OverlayUI.activity);
+                        builder.setTitle("File name");
+                        builder.setView(layout);
+
+                        builder.setPositiveButton("Select a folder", new DialogInterface.OnClickListener() {
+                            public void onClick(DialogInterface dialog, int which) {
+                                final String filename = input.getText().toString();
+                                if (!filename.isEmpty()) {
+                                    new FileBrowser("gmd", true, new FileBrowser.Callback() {
+                                        public void onSelected(File dir) {
+                                            exportGmd(new File(dir, filename).getAbsolutePath());
+                                        }
+                                    });
+                                }
+                            }
+                        });
+                        builder.setNegativeButton("Cancel", null);
+                        builder.setCancelable(true);
+
+                        AlertDialog exportDialog = builder.create();
+                        exportDialog.show();
+                    }
+                });
 
                 offsetBtn.setVisibility(View.GONE);
                 origSongBtn.setVisibility(View.GONE);
                 customSongBtn.setVisibility(View.GONE);
                 colorBtn.setVisibility(View.GONE);
+                gmdExportBtn.setVisibility(View.GONE);
 
-                creatorRow.addView(offsetBtn);
-                creatorRow.addView(origSongBtn);
-                creatorRow.addView(customSongBtn);
-                creatorRow.addView(colorBtn);
-                content.addView(creatorRow);
+                creatorRow.addView(offsetBtn, lp);
+                creatorRow.addView(origSongBtn, lp);
+                creatorRow.addView(customSongBtn, lp);
+                creatorRow.addView(colorBtn, lp);
+                creatorRow.addView(gmdExportBtn, lp);
+
+                LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+                labelParams.leftMargin = dp(8);
+
+                lengthLabel = new TextView(activity);
+                lengthLabel.setShadowLayer(3.0f, 2.0f, 2.0f, android.graphics.Color.BLACK);
+                lengthLabel.setTextSize(20);
+                lengthLabel.setVisibility(View.GONE);
+                lengthLabel.setLayoutParams(labelParams);
+
+                creatorColumn.addView(creatorRow);
+                creatorColumn.addView(lengthLabel);
+                content.addView(creatorColumn);
             }
         });
     }
 
     public static void setButtonVisible(final String button, final boolean visible) {
-        if (button.equals("Options")) {
-            activity.runOnUiThread(new Runnable() {
-                public void run() {
+        final int length = (button.equals("LevelSettings") && visible == true) ? getCurrentLevelLength() : 0;
+        activity.runOnUiThread(new Runnable() {
+            public void run() {
+                if (button.equals("Options")) {
+                    gmdImportBtn.setVisibility(visible ? View.VISIBLE : View.GONE);
                     percentBtn.setVisibility(visible ? View.VISIBLE : View.GONE);
                     songsBtn.setVisibility(visible ? View.VISIBLE : View.GONE);
                     if (logged_in) {
@@ -378,37 +460,28 @@ public class OverlayUI {
                         registerBtn.setVisibility(visible ? View.VISIBLE : View.GONE);
                         loginBtn.setVisibility(visible ? View.VISIBLE : View.GONE);
                     }
-                }
-            });
-        } else if (button.equals("LevelMenu")) {
-            activity.runOnUiThread(new Runnable() {
-                public void run() {
+                } else if (button.equals("LevelMenu")) {
                     copyBtn.setVisibility(visible ? View.VISIBLE : View.GONE);
                     if (moderator) rateBtn.setVisibility(visible ? View.VISIBLE : View.GONE);
-                }
-            });
-        } else if (button.equals("LevelSettings")) {
-            activity.runOnUiThread(new Runnable() {
-                public void run() {
+                } else if (button.equals("LevelSettings")) {
                     offsetBtn.setVisibility(visible ? View.VISIBLE : View.GONE);
                     if (!SongsDialog.getCurrentSongID().isEmpty()) origSongBtn.setVisibility(visible ? View.VISIBLE : View.GONE);
                     customSongBtn.setVisibility(visible ? View.VISIBLE : View.GONE);
-                }
-            });
-        } else if (button.equals("Color")) {
-            activity.runOnUiThread(new Runnable() {
-                public void run() {
+                    gmdExportBtn.setVisibility(visible ? View.VISIBLE : View.GONE);
+                    if (visible == true) lengthLabel.setText("Length: " + length + "s");
+                    lengthLabel.setVisibility(visible ? View.VISIBLE : View.GONE);
+                } else if (button.equals("Color")) {
                     colorBtn.setVisibility(visible ? View.VISIBLE : View.GONE);
                 }
-            });
-        }
+            }
+        });
     }
 
     public static void setOriginalText(final int orig) {
         activity.runOnUiThread(new Runnable() {
             public void run() {
                 if (orig == 0) copyBtn.setText("Copy");
-                else copyBtn.setText(String.format("Copy (orig: %d)", orig));
+                else copyBtn.setText(String.format("Copy (%d)", orig));
             }
         });
     }
@@ -448,7 +521,7 @@ public class OverlayUI {
                 });
 
                 if (message.contains("load")) {
-                    builder.setNeutralButton("Don't load my levels", new DialogInterface.OnClickListener() {
+                    builder.setNeutralButton("W/out my levels", new DialogInterface.OnClickListener() {
                         public void onClick(DialogInterface dialog, int which) {
                             loadBtn.setEnabled(false);
                             sendLoadRequest(user, pass, true);
@@ -505,6 +578,13 @@ public class OverlayUI {
                     loadBtn.setEnabled(true);
                 } else if (title.contains("Rate") || title.contains("Unrate")) {
                     rateBtn.setEnabled(true);
+                    if (message.equals("You're not a moderator")) {
+                        moderator = false;
+                        rateBtn.setVisibility(View.GONE);
+                        Properties props = loadConfig();
+                        props.setProperty("moderator", "0");
+                        saveConfig(props);
+                    }
                 }
                 new AlertDialog.Builder(activity).setTitle(title).setMessage(message).setPositiveButton("OK", null).show();
             }
@@ -513,23 +593,35 @@ public class OverlayUI {
 
     public static void setOrigSongBtnVisible() { origSongBtn.setVisibility(View.VISIBLE); }
     public static void disableRateBtn() { rateBtn.setEnabled(false); }
+    public static void setCurrentLevelLength(final int length) {
+        activity.runOnUiThread(new Runnable() {
+            public void run() {
+                if (customSongBtn.getVisibility() == View.VISIBLE) {
+                    lengthLabel.setText("Length: " + Integer.toString(length) + "s");
+                    lengthLabel.setVisibility(View.VISIBLE);
+                }
+            }
+        });
+    }
 
     public static void onDestroy() {
         AuthDialog.dismiss();
-        registerBtn = null;
-        loginBtn = null;
-        logoutBtn = null;
-        saveBtn = null;
-        loadBtn = null;
-        reqBtn = null;
+        gmdImportBtn = null;
         percentBtn = null;
         songsBtn = null;
+        registerBtn = null;
+        loginBtn = null;
+        reqBtn = null;
+        saveBtn = null;
+        loadBtn = null;
+        logoutBtn = null;
         copyBtn = null;
         rateBtn = null;
         offsetBtn = null;
         origSongBtn = null;
         customSongBtn = null;
         colorBtn = null;
+        lengthLabel = null;
         activity = null;
     }
 }

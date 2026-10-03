@@ -54,14 +54,14 @@ public class FileDownloadTask extends AsyncTask<String, Integer, Boolean> {
         int paddingPx = OverlayUI.dp(16);
         layout.setPadding(paddingPx, paddingPx, paddingPx, paddingPx);
 
-        TextView tvProgressLabel = new TextView(context);
-        tvProgressLabel.setText("Downloading...");
+        tvPercent = new TextView(context);
+        tvPercent.setText("Downloading... 0%");
         LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        tvProgressLabel.setLayoutParams(labelParams);
-        layout.addView(tvProgressLabel);
+        tvPercent.setLayoutParams(labelParams);
+        layout.addView(tvPercent);
 
         progressBar = new ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setMax(100);
@@ -73,16 +73,6 @@ public class FileDownloadTask extends AsyncTask<String, Integer, Boolean> {
         progressParams.topMargin = OverlayUI.dp(8);
         progressBar.setLayoutParams(progressParams);
         layout.addView(progressBar);
-
-        tvPercent = new TextView(context);
-        tvPercent.setText("0%");
-        LinearLayout.LayoutParams percentParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        percentParams.topMargin = OverlayUI.dp(4);
-        tvPercent.setLayoutParams(percentParams);
-        layout.addView(tvPercent);
 
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle("Downloading file");
@@ -166,7 +156,7 @@ public class FileDownloadTask extends AsyncTask<String, Integer, Boolean> {
         } else {
             progressBar.setIndeterminate(false);
             progressBar.setProgress(progress);
-            tvPercent.setText(progress + "%");
+            tvPercent.setText("Downloading... " + progress + "%");
         }
     }
 

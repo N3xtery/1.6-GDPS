@@ -22,6 +22,7 @@ import android.widget.ScrollView;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.Paint;
 import android.view.ViewTreeObserver;
+import android.graphics.Color;
 
 import java.io.File;
 import java.util.Properties;
@@ -55,7 +56,7 @@ public class SongsDialog {
     private static float currentSongOffset;
 
     public static native void updateMenuPractSongNative(boolean menu, String path, boolean updateMenuNow);
-    public static native void updateSongsPath(String path);
+    public static native void updateSongsPathNative(String path);
     public static native void setCustomSong(String id);
     public static native void setOffset(float offset);
     public static native void playLevel();
@@ -72,8 +73,9 @@ public class SongsDialog {
     public static void buildOffsetDialog() {
         LinearLayout layout = new LinearLayout(OverlayUI.activity);
         layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setFocusableInTouchMode(true);
         int pad = OverlayUI.dp(8);
-        layout.setPadding(pad, pad, pad, pad);
+        layout.setPadding(pad, pad, pad, OverlayUI.dp(3));
 
         final EditText inputOffset = new EditText(OverlayUI.activity);
         inputOffset.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
@@ -101,9 +103,30 @@ public class SongsDialog {
         offsetDialog.show();
     }
 
+    private static void updateSongsPath(File dir, EditText inputPath, boolean defaultPath) {
+        if (!dir.getAbsolutePath().equals(songsDir.getAbsolutePath())) {
+            songsDir = dir;
+            String path = songsDir.getAbsolutePath();
+            Properties props = OverlayUI.loadConfig();
+            props.setProperty("songsDir", defaultPath ? "" : path);
+            OverlayUI.saveConfig(props);
+            updateSongsPathNative(path + "/");
+            inputPath.setText(path);
+            if (!menuSong.isEmpty()) {
+                updateMenuPractSongNative(true, "", true);
+                menuSong = updateMenuPractSong(null, null, menuSong, "menuSong", menuSong, 3);
+            }
+            if (!practiceSong.isEmpty()) {
+                updateMenuPractSongNative(false, "", false);
+                practiceSong = updateMenuPractSong(null, null, practiceSong, "practiceSong", practiceSong, 4);
+            }
+        }
+    }
+
     public static void buildSongsDialog(final boolean levelSettings) {
         LinearLayout layout = new LinearLayout(OverlayUI.activity);
         layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setFocusableInTouchMode(true);
         int pad = OverlayUI.dp(8);
         layout.setPadding(pad, pad, pad, pad);
 
@@ -126,28 +149,21 @@ public class SongsDialog {
         pathLabelInput.addView(labelPath);
 
         final EditText inputPath = new EditText(OverlayUI.activity);
-        inputPath.setInputType(InputType.TYPE_CLASS_TEXT);
-        inputPath.setHint("Path");
+        inputPath.setInputType(InputType.TYPE_NULL);
         inputPath.setText(songsDir.getAbsolutePath());
         inputPath.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         pathLabelInput.addView(inputPath);
 
         Button usePathBtn = new Button(OverlayUI.activity);
-        usePathBtn.setText("Use");
+        usePathBtn.setText("...");
         usePathBtn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) {
-                String songsDirStr = inputPath.getText().toString();
-                File dir = new File(songsDirStr);
-                if (dir.isDirectory()) {
-                    if (!dir.getAbsolutePath().equals(songsDir.getAbsolutePath())) {
-                        songsDir = dir;
-                        Properties props = OverlayUI.loadConfig();
-                        props.setProperty("songsDir", songsDirStr);
-                        OverlayUI.saveConfig(props);
+                new FileBrowser("mp3", true, new FileBrowser.Callback() {
+                    public void onSelected(File dir) {
+                        updateSongsPath(dir, inputPath, false);
                         songsTablePopulate(table, levelSettings);
-                        updateSongsPath(songsDir.getAbsolutePath() + "/");
                     }
-                } else OverlayUI.showMessageBox("Error", "Directory doesn't exist");
+                });
             }
         });
 
@@ -157,26 +173,17 @@ public class SongsDialog {
             public void onClick(View view) {
                 File mainDir = OverlayUI.activity.getFilesDir();
                 File songsDirNew = new File(mainDir, "songs");
-                if (!songsDirNew.getAbsolutePath().equals(songsDir.getAbsolutePath())) {
-                    songsDir = songsDirNew;
-                    Properties props = OverlayUI.loadConfig();
-                    props.setProperty("songsDir", "");
-                    OverlayUI.saveConfig(props);
-                    songsTablePopulate(table, levelSettings);
-                    updateSongsPath(songsDir.getAbsolutePath() + "/");
-                }
-                inputPath.setText(songsDir.getAbsolutePath());
+                updateSongsPath(songsDirNew, inputPath, true);
+                songsTablePopulate(table, levelSettings);
             }
         });
 
         LinearLayout idLabelInput = new LinearLayout(OverlayUI.activity);
         idLabelInput.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams idParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        idParams.setMargins(OverlayUI.dp(20), 0, 0, 0);
-        idLabelInput.setLayoutParams(idParams);
+        idLabelInput.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
         TextView labelID = new TextView(OverlayUI.activity);
-        labelID.setText("Add a song (muzmo):");
+        labelID.setText("Add (en.muzmo.cc):");
         labelID.setTextSize(12);
         idLabelInput.addView(labelID);
 
@@ -240,7 +247,7 @@ public class SongsDialog {
                         public void onClick(DialogInterface dialog, int which) {
                             loadingDlg = null;
                         }
-                    }).setPositiveButton("Play without music", new DialogInterface.OnClickListener() {
+                    }).setPositiveButton("Play w/out music", new DialogInterface.OnClickListener() {
                         public void onClick(DialogInterface dialog, int which) {
                             loadingDlg = null;
                             playLevel();
@@ -346,9 +353,9 @@ public class SongsDialog {
                             }
                         });
                     }
-                } catch (Exception e) {
-                    e.printStackTrace();
+                } catch (final Exception e) {
                     if (loadingDlg != null) {
+                        e.printStackTrace();
                         OverlayUI.activity.runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
@@ -356,7 +363,7 @@ public class SongsDialog {
                                     loadingDlg.dismiss();
                                     loadingDlg = null;
                                 }
-                                OverlayUI.showMessageBox("Error", "Song not found");
+                                OverlayUI.showMessageBox("Error", e.toString());
                             }
                         });
                     }
@@ -365,21 +372,21 @@ public class SongsDialog {
         }).start();
     }
 
-    private static String updateMenuPractSong(TableLayout table, Button btn, String songGlobal, String songProperties, String id, String name, int pos) {
+    private static String updateMenuPractSong(TableLayout table, Button btn, String songGlobal, String songProperties, String id, int pos) {
         if (id.equals(songGlobal)) {
             songGlobal = "";
-            btn.setText(name + ": off");
+            if (btn != null) btn.setTextColor(Color.RED);
         } else {
             if (!songGlobal.isEmpty()) for (int i = 1; i < table.getChildCount(); i++) {
                 TableRow row = (TableRow)table.getChildAt(i);
                 String rowId = ((TextView)row.getChildAt(0)).getText().toString();
                 if (rowId.equals(songGlobal)) {
                     Button oldBtn = (Button)(row.getChildAt(pos));
-                    oldBtn.setText(name + ": off");
+                    oldBtn.setTextColor(Color.RED);
                 }
             }
             songGlobal = id;
-            btn.setText(name + ": on");
+            btn.setTextColor(Color.rgb(0, 192, 0));
         }
         Properties props = OverlayUI.loadConfig();
         props.setProperty(songProperties, songGlobal);
@@ -390,10 +397,8 @@ public class SongsDialog {
     public static void songsTableAddRow(final TableLayout table, final File file, boolean toBeginning, boolean levelSettings) {
         String artist = "Unknown";
         String title = "Unknown";
-        int bitrate = 0;
         try {
             Mp3File mp3File = new Mp3File(file.getAbsolutePath());
-            bitrate = mp3File.getBitrate();
             if (mp3File.hasId3v2Tag()) {
                 ID3v2 tag = mp3File.getId3v2Tag();
                 artist = tag.getArtist();
@@ -406,13 +411,19 @@ public class SongsDialog {
         } catch (Exception ignored) {}
 
         final TableRow row = new TableRow(OverlayUI.activity);
+        TableRow.LayoutParams lp = new TableRow.LayoutParams(TableRow.LayoutParams.WRAP_CONTENT, TableRow.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(OverlayUI.dp(-2), 0, OverlayUI.dp(-2), 0);
+
         row.setBaselineAligned(false);
         row.setGravity(Gravity.CENTER_VERTICAL);
         final String id = file.getName().replace(".mp3", "");
-        row.addView(makeCell(id));
-        row.addView(makeCell(artist + " — " + title));
-        row.addView(makeCell(Integer.toString(bitrate)));
-        row.addView(makeCell(String.format("%.2f MB", file.length() / (1024.0 * 1024.0))));
+        TextView idLabel = makeCell(id);
+        idLabel.setTextSize(12);
+        row.addView(idLabel, lp);
+        row.addView(makeCell(artist + " — " + title), lp);
+        TextView sizeLabel = makeCell(String.format("%.2f MB", file.length() / (1024.0 * 1024.0)));
+        sizeLabel.setTextSize(12);
+        row.addView(sizeLabel, lp);
 
         if (levelSettings) {
             final Button useBtn = new Button(OverlayUI.activity);
@@ -435,33 +446,35 @@ public class SongsDialog {
                     OverlayUI.setOrigSongBtnVisible();
                 }
             });
-            row.addView(useBtn);
+            row.addView(useBtn, lp);
         } else {
             final Button menuBtn = new Button(OverlayUI.activity);
-            if (id.equals(menuSong)) menuBtn.setText("Menu: on");
-            else menuBtn.setText("Menu: off");
+            menuBtn.setText("Menu");
+            if (id.equals(menuSong)) menuBtn.setTextColor(Color.rgb(0, 192, 0));
+            else menuBtn.setTextColor(Color.RED);
             menuBtn.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    menuSong = updateMenuPractSong(table, menuBtn, menuSong, "menuSong", id, "Menu", 4);
+                    menuSong = updateMenuPractSong(table, menuBtn, menuSong, "menuSong", id, 3);
                     File songFile = new File(songsDir, menuSong + ".mp3");
                     updateMenuPractSongNative(true, menuSong.isEmpty() ? "" : songFile.getAbsolutePath(), true);
                 }
             });
-            row.addView(menuBtn);
+            row.addView(menuBtn, lp);
 
             final Button practBtn = new Button(OverlayUI.activity);
-            if (id.equals(practiceSong)) practBtn.setText("Pract: on");
-            else practBtn.setText("Pract: off");
+            practBtn.setText("Pract");
+            if (id.equals(practiceSong)) practBtn.setTextColor(Color.rgb(0, 192, 0));
+            else practBtn.setTextColor(Color.RED);
             practBtn.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    practiceSong = updateMenuPractSong(table, practBtn, practiceSong, "practiceSong", id, "Pract", 5);
+                    practiceSong = updateMenuPractSong(table, practBtn, practiceSong, "practiceSong", id, 4);
                     File songFile = new File(songsDir, practiceSong + ".mp3");
                     updateMenuPractSongNative(false, songFile.getAbsolutePath(), false);
                 }
             });
-            row.addView(practBtn);
+            row.addView(practBtn, lp);
         }
 
         Button removeBtn = new Button(OverlayUI.activity);
@@ -469,15 +482,23 @@ public class SongsDialog {
         removeBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (id.equals(menuSong)) updateMenuPractSongNative(true, "", true);
-                if (id.equals(practiceSong)) updateMenuPractSongNative(false, "", false);
+                if (id.equals(menuSong)) {
+                    updateMenuPractSongNative(true, "", true);
+                    menuSong = updateMenuPractSong(null, null, menuSong, "menuSong", id, 3);
+                }
+                if (id.equals(practiceSong)) {
+                    updateMenuPractSongNative(false, "", false);
+                    practiceSong = updateMenuPractSong(null, null, practiceSong, "practiceSong", id, 4);
+                }
                 boolean deleted = file.delete();
                 if (deleted) {
                     table.removeView(row);
                 }
             }
         });
-        row.addView(removeBtn);
+        TableRow.LayoutParams lpRemove = new TableRow.LayoutParams(TableRow.LayoutParams.WRAP_CONTENT, TableRow.LayoutParams.WRAP_CONTENT);
+        lpRemove.setMargins(OverlayUI.dp(-2), 0, 0, 0);
+        row.addView(removeBtn, lpRemove);
 
         if (toBeginning) table.addView(row, 1);
         else table.addView(row);
@@ -488,7 +509,6 @@ public class SongsDialog {
         TableRow header = new TableRow(OverlayUI.activity);
         header.addView(makeHeaderCell("ID"));
         header.addView(makeHeaderCell("Name"));
-        header.addView(makeHeaderCell("Bitrate"));
         header.addView(makeHeaderCell("Size"));
         header.addView(makeHeaderCell(""));
         if (!levelSettings) header.addView(makeHeaderCell(""));

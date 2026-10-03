@@ -3,5 +3,6 @@
 /libs
 /out
 /obj
+/iOS
 /iOS/packages
 /iOS/.theos

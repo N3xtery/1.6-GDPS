@@ -11,8 +11,8 @@ import android.widget.CompoundButton;
 import android.widget.CheckBox;
 
 public class RateMenu {
-    public static int stars;
-    public static boolean featured;
+    public static int stars, starsDlg;
+    public static boolean featured, featuredDlg;
 
     public static native void sendRateRequest(String user, String pass, int stars, boolean featured);
 
@@ -22,17 +22,27 @@ public class RateMenu {
     }
 
     public static void buildRateDialog() {
+        starsDlg = stars;
+        featuredDlg = featured;
+
         LinearLayout layout = new LinearLayout(OverlayUI.activity);
-        layout.setMinimumWidth(OverlayUI.dp(600));
-        layout.setOrientation(LinearLayout.VERTICAL);
+        if (OverlayUI.activity.getResources().getDisplayMetrics().widthPixels / OverlayUI.activity.getResources().getDisplayMetrics().density >= 640) {
+            layout.setMinimumWidth(OverlayUI.dp(600));
+            layout.setOrientation(LinearLayout.HORIZONTAL);
+        } else layout.setOrientation(LinearLayout.VERTICAL);
         int pad = OverlayUI.dp(8);
         layout.setPadding(pad, pad, pad, pad);
+        layout.setGravity(Gravity.CENTER);
 
         LinearLayout radioGroup = new LinearLayout(OverlayUI.activity);
         radioGroup.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        params.gravity = Gravity.CENTER_HORIZONTAL;
+        params.gravity = Gravity.CENTER;
         radioGroup.setLayoutParams(params);
+
+        LinearLayout radioGroup2 = new LinearLayout(OverlayUI.activity);
+        radioGroup2.setOrientation(LinearLayout.HORIZONTAL);
+        radioGroup2.setLayoutParams(params);
 
         final RadioButton[] radioButtons = new RadioButton[11];
         for (int i = 0; i < 12; i++) {
@@ -46,7 +56,7 @@ public class RateMenu {
                 checkBox.setLayoutParams(params);
                 checkBox.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
                     public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                        featured = isChecked;
+                        featuredDlg = isChecked;
                     }
                 });
                 checkBox.setChecked(featured);
@@ -60,7 +70,7 @@ public class RateMenu {
                     public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                         if (isChecked) {
                             for (int j = 0; j < 11; j++) if (j != index) radioButtons[j].setChecked(false);
-                            stars = index;
+                            starsDlg = index;
                         }
                     }
                 });
@@ -73,11 +83,13 @@ public class RateMenu {
             if (i == 11) label.setLayoutParams(params);
 
             optionLayout.addView(label);
-            radioGroup.addView(optionLayout);
+            if (i < 6) radioGroup.addView(optionLayout);
+            else radioGroup2.addView(optionLayout);
         }
 
         radioButtons[stars].setChecked(true);
         layout.addView(radioGroup);
+        layout.addView(radioGroup2);
 
         AlertDialog.Builder builder = new AlertDialog.Builder(OverlayUI.activity);
         builder.setTitle("Rate Level");
@@ -86,7 +98,7 @@ public class RateMenu {
         builder.setPositiveButton("Rate", new DialogInterface.OnClickListener() {
             public void onClick(DialogInterface dialog, int which) {
                 OverlayUI.disableRateBtn();
-                sendRateRequest(OverlayUI.getUser(), OverlayUI.getPass(), stars, featured);
+                sendRateRequest(OverlayUI.getUser(), OverlayUI.getPass(), starsDlg, featuredDlg);
             }
         });
         builder.setNegativeButton("Cancel", null);

@@ -11,7 +11,6 @@ static void getResponseCode(char* buf, void* response) {
 
 #if defined(__APPLE__)
 static void (*httpRequestCons)(void* httpRequest);
-static void (*httpRequestSetURL)(const char* dest, const char* url, int len);
 #elif defined(__i386__)
 static void (*cocosObjCons)(void* obj);
 static void (*cocosStrCons)(void* obj, const char* src, int size, int trail);
@@ -50,7 +49,10 @@ static void sendPacket(const char* url, const char* data, void* callback) {
     char* httpRequest = (char*)malloc(0x4c);
     httpRequestCons(httpRequest);
     *(int*)((char*)httpRequest + 0x18) = 1;
-#if defined(__i386__) || defined(__APPLE__)
+#if defined(__APPLE__)
+    std::string* urlStr = (std::string*)((char*)httpRequest + 0x1c);
+    urlStr->assign(url, strlen(url));
+#elif defined(__i386__)
     httpRequestSetURL((char*)httpRequest + 0x1c, url, strlen(url));
 #else
     httpRequestSetURL(httpRequest, url);
@@ -122,22 +124,20 @@ static void saveCallback(void* self, void* node, void* response) {
     if (title) showMessageBox(title, msg);
 }
 
-static void (*dsDictCons)(void* self);
+void (*dsDictCons)(void* self);
 void* (*gameManagerGetInstance)();
 static void (*gameManagerEncodeData)(void* self, void* ds);
-static void* (*levelManagerGetInstance)();
+void* (*levelManagerGetInstance)();
 static void (*levelManagerEncodeData)(void* self, void* ds);
 #if defined(__i386__)
-static std::string (*dsDictToStr)(void* self);
+std::string (*dsDictToStr)(void* self);
 #else
-static void (*dsDictToStr)(std::string* out, void* self);
+void (*dsDictToStr)(std::string* out, void* self);
 #endif
 
-static int (*gzDecompress)(const char* in, int len, char** out);
-static bool (*dsStrToDict)(void* self, std::string* str);
+bool (*dsStrToDict)(void* self, std::string* str);
 static void (*gameManagerLoadData)(void* self, void* ds);
 static void (*levelManagerLoadData)(void* self, void* ds);
-static void (*managerSave)(void* self);
 #if defined(__i386__)
 static std::string (*responseToStr)(void* response);
 #else
@@ -186,7 +186,6 @@ static void loadCallback(void* self, void* node, void* response) {
                 dsStrToDict(dict, &levelDataDecompressed);
                 void* levelManager = levelManagerGetInstance();
                 levelManagerLoadData(levelManager, dict);
-                managerSave(levelManager);
             }
 
             title = "Load successful";
@@ -247,40 +246,20 @@ static void rateCallback(void* self, void* node, void* response) {
     if (title) showMessageBox(title, msg);
 }
 
-#if defined(__APPLE__)
-#else
-extern "C" JNIEXPORT void JNICALL
-Java_com_necytdamu_onesixgdps_AuthDialog_sendAuthRequest(JNIEnv* env, jclass, jstring userJava, jstring passJava, jboolean regJava) {
-    const char* username = env->GetStringUTFChars(userJava, nullptr);
-    const char* password = env->GetStringUTFChars(passJava, nullptr);
-    bool reg = (regJava != JNI_FALSE);
-
+void sendAuthRequest(const char* username, const char* password, bool reg) {
     char data[256];
     snprintf(data, 256, "userName=%s&password=%s", username, password);
     sendPacket(reg ? "http://gdpsnazarva.7m.pl/database/accounts/registerGJAccount.php" : "http://gdpsnazarva.7m.pl/database/accounts/loginGJAccount.php",
                data, reg ? (void*)&registerCallback : (void*)&loginCallback);
-
-    env->ReleaseStringUTFChars(userJava, username);
-    env->ReleaseStringUTFChars(passJava, password);
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_necytdamu_onesixgdps_RateMenu_sendRateRequest(JNIEnv* env, jclass, jstring userJava, jstring passJava, jint stars, jboolean featured) {
-    const char* username = env->GetStringUTFChars(userJava, nullptr);
-    const char* password = env->GetStringUTFChars(passJava, nullptr);
-
+void sendRateRequest(const char* username, const char* password, int stars, bool featured) {
     char data[256];
-    snprintf(data, 256, "userName=%s&password=%s&id=%d&stars=%d&featured=%d", username, password, getLevelID(currentLevel), stars, featured != JNI_FALSE);
+    snprintf(data, 256, "userName=%s&password=%s&id=%d&stars=%d&featured=%d", username, password, getLevelID(currentLevel), stars, featured);
     sendPacket("http://gdpsnazarva.7m.pl/database/rateGJLevel.php", data, (void*)&rateCallback);
-
-    env->ReleaseStringUTFChars(userJava, username);
-    env->ReleaseStringUTFChars(passJava, password);
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_necytdamu_onesixgdps_OverlayUI_sendSaveRequest(JNIEnv* env, jclass, jstring userJava, jstring passJava) {
-    const char* usernameC = env->GetStringUTFChars(userJava, nullptr);
-    const char* passwordC = env->GetStringUTFChars(passJava, nullptr);
+void sendSaveRequest(const char* usernameC, const char* passwordC) {
     std::string username = usernameC;
     std::string password = passwordC;
 
@@ -289,12 +268,12 @@ Java_com_necytdamu_onesixgdps_OverlayUI_sendSaveRequest(JNIEnv* env, jclass, jst
         dsDictCons(dict);
         void* gameManager = gameManagerGetInstance();
         gameManagerEncodeData(gameManager, dict);
-    #if defined(__i386__)
+        #if defined(__i386__)
         std::string str = dsDictToStr(dict);
-    #else
+        #else
         std::string str = std::string();
         dsDictToStr(&str, dict);
-    #endif
+        #endif
         size_t pos = 0;
         while ((pos = str.find("<key>k4</key>", pos)) != std::string::npos) { // remove locally saved levels
             size_t stringClose = str.find("</string>", pos) + std::string("</string>").size();
@@ -305,12 +284,12 @@ Java_com_necytdamu_onesixgdps_OverlayUI_sendSaveRequest(JNIEnv* env, jclass, jst
         dsDictCons(dict);
         void* levelManager = levelManagerGetInstance();
         levelManagerEncodeData(levelManager, dict);
-    #if defined(__i386__)
+        #if defined(__i386__)
         std::string strLevel = dsDictToStr(dict);
-    #else
+        #else
         std::string strLevel = std::string();
         dsDictToStr(&strLevel, dict);
-    #endif
+        #endif
         std::string strReadyLevel = base64Encode(gzipCompress(strLevel));
 
         std::string strReady = base64Encode(gzipCompress(str));
@@ -324,7 +303,45 @@ Java_com_necytdamu_onesixgdps_OverlayUI_sendSaveRequest(JNIEnv* env, jclass, jst
 
         free(dict);
     });
+}
 
+void sendLoadRequest(const char* username, const char* password, bool noLevelsLocal) {
+    noLevels = noLevelsLocal;
+    char data[256];
+    snprintf(data, 256, "userName=%s&password=%s", username, password);
+    sendPacket("http://gdpsnazarva.7m.pl/database/accounts/syncGJAccount.php", data, (void*)&loadCallback);
+}
+
+void sendReqRequest(const char* username, const char* password) {
+    char data[256];
+    snprintf(data, 256, "userName=%s&password=%s", username, password);
+    sendPacket("http://gdpsnazarva.7m.pl/database/reqGJModerator.php", data, (void*)&reqCallback);
+}
+
+#ifndef __APPLE__
+extern "C" JNIEXPORT void JNICALL
+Java_com_necytdamu_onesixgdps_AuthDialog_sendAuthRequest(JNIEnv* env, jclass, jstring userJava, jstring passJava, jboolean regJava) {
+    const char* username = env->GetStringUTFChars(userJava, nullptr);
+    const char* password = env->GetStringUTFChars(passJava, nullptr);
+    sendAuthRequest(username, password, regJava != JNI_FALSE);
+    env->ReleaseStringUTFChars(userJava, username);
+    env->ReleaseStringUTFChars(passJava, password);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_necytdamu_onesixgdps_RateMenu_sendRateRequest(JNIEnv* env, jclass, jstring userJava, jstring passJava, jint stars, jboolean featured) {
+    const char* username = env->GetStringUTFChars(userJava, nullptr);
+    const char* password = env->GetStringUTFChars(passJava, nullptr);
+    sendRateRequest(username, password, stars, featured != JNI_FALSE);
+    env->ReleaseStringUTFChars(userJava, username);
+    env->ReleaseStringUTFChars(passJava, password);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_necytdamu_onesixgdps_OverlayUI_sendSaveRequest(JNIEnv* env, jclass, jstring userJava, jstring passJava) {
+    const char* usernameC = env->GetStringUTFChars(userJava, nullptr);
+    const char* passwordC = env->GetStringUTFChars(passJava, nullptr);
+    sendSaveRequest(usernameC, passwordC);
     env->ReleaseStringUTFChars(userJava, usernameC);
     env->ReleaseStringUTFChars(passJava, passwordC);
 }
@@ -333,12 +350,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_necytdamu_onesixgdps_OverlayUI_sendLoadRequest(JNIEnv* env, jclass, jstring userJava, jstring passJava, jboolean javaNolevels) {
     const char* username = env->GetStringUTFChars(userJava, nullptr);
     const char* password = env->GetStringUTFChars(passJava, nullptr);
-    noLevels = javaNolevels != JNI_FALSE;
-
-    char data[256];
-    snprintf(data, 256, "userName=%s&password=%s", username, password);
-    sendPacket("http://gdpsnazarva.7m.pl/database/accounts/syncGJAccount.php", data, (void*)&loadCallback);
-
+    sendLoadRequest(username, password, javaNolevels != JNI_FALSE);
     env->ReleaseStringUTFChars(userJava, username);
     env->ReleaseStringUTFChars(passJava, password);
 }
@@ -347,11 +359,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_necytdamu_onesixgdps_OverlayUI_sendReqRequest(JNIEnv* env, jclass, jstring userJava, jstring passJava) {
     const char* username = env->GetStringUTFChars(userJava, nullptr);
     const char* password = env->GetStringUTFChars(passJava, nullptr);
-
-    char data[256];
-    snprintf(data, 256, "userName=%s&password=%s", username, password);
-    sendPacket("http://gdpsnazarva.7m.pl/database/reqGJModerator.php", data, (void*)&reqCallback);
-
+    sendReqRequest(username, password);
     env->ReleaseStringUTFChars(userJava, username);
     env->ReleaseStringUTFChars(passJava, password);
 }
@@ -360,7 +368,6 @@ Java_com_necytdamu_onesixgdps_OverlayUI_sendReqRequest(JNIEnv* env, jclass, jstr
 void networkcpp_init() {
 #if defined(__APPLE__)
     httpRequestCons = (void(*)(void*))((base + 0xA0E28) | 1);
-    httpRequestSetURL = (void(*)(const char*, const char*, int))((base + 0x3A7B48) | 1);
     cocosObjRetain = (void(*)(void*))((base + 0x20094) | 1);
     httpGetInstance = (void*(*)())((base + 0x2D5B4) | 1);
     httpInstanceSend = (void(*)(void*, void*))((base + 0x2E25C) | 1);
@@ -376,7 +383,6 @@ void networkcpp_init() {
     dsStrToDict = (bool(*)(void*, std::string*))((base + 0x114920) | 1);
     gameManagerLoadData = (void(*)(void*, void*))((base + 0xA3058) | 1);
     levelManagerLoadData = (void(*)(void*, void*))((base + 0x158268) | 1);
-    managerSave = (void(*)(void*))((base + 0x1198D4) | 1);
     responseToStr = (void(*)(std::string*, void*))((base + 0x118EF8) | 1);
 #else
 #if defined(__i386__)
@@ -384,8 +390,8 @@ void networkcpp_init() {
     cocosStrCons = (void(*)(void*, const char*, int, int))(0x418600 + handle->base);
     httpRequestSetURL = (void(*)(const char*, const char*, int))(0x418840 + handle->base);
 #else
-    httpRequestCons = (void(*)(void*))(dlsym(handle, "_ZN7cocos2d9extension13CCHttpRequestC2Ev"));
-    httpRequestSetURL = (void(*)(void*, const char*))(dlsym(handle, "_ZN7cocos2d9extension13CCHttpRequest6setUrlEPKc"));
+    httpRequestCons = (void(*)(void*))((0x119D8C + handle->base) | 1);
+    httpRequestSetURL = (void(*)(void*, const char*))((0x15E568 + handle->base) | 1);
 #endif
     cocosObjRetain = (void(*)(void*))(dlsym(handle, "_ZN7cocos2d8CCObject6retainEv"));
     httpGetInstance = (void*(*)())(dlsym(handle, "_ZN7cocos2d9extension12CCHttpClient11getInstanceEv"));
@@ -406,7 +412,6 @@ void networkcpp_init() {
     dsStrToDict = (bool(*)(void*, std::string*))(dlsym(handle, "_ZN13DS_Dictionary25loadRootSubDictFromStringESs"));
     gameManagerLoadData = (void(*)(void*, void*))(dlsym(handle, "_ZN11GameManager10dataLoadedEP13DS_Dictionary"));
     levelManagerLoadData = (void(*)(void*, void*))(dlsym(handle, "_ZN17LocalLevelManager10dataLoadedEP13DS_Dictionary"));
-    managerSave = (void(*)(void*))(dlsym(handle, "_ZN8GManager4saveEv"));
 #if defined(__i386__)
     responseToStr = (std::string(*)(void*))(dlsym(handle, "_ZN11GameToolbox11getResponseEPN7cocos2d9extension14CCHttpResponseE"));
 #else

@@ -1,9 +1,19 @@
-#import "16gdps.h"
+#import "iOSBridge.h"
 
 %ctor {
-    onLoad();
+    iOSSetupNative();
 }
 
 %hook Everyplay
 - (void)showExpiredMessage {}
+%end
+
+%hook AppController
+
+- (BOOL)application:(UIApplication *)application
+    didFinishLaunchingWithOptions:(NSDictionary *)options {
+    BOOL result = %orig;
+    iOSBuildOverlay();
+    return result;
+}
 %end

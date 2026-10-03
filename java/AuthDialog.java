@@ -23,14 +23,10 @@ public class AuthDialog {
     public static void buildAuthDialog(final boolean register) {
         LinearLayout layout = new LinearLayout(OverlayUI.activity);
         layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setFocusableInTouchMode(true);
         layout.setMinimumWidth(OverlayUI.dp(600));
         int pad = OverlayUI.dp(8);
-        layout.setPadding(pad, pad, pad, pad);
-
-        TextView labelUser = new TextView(OverlayUI.activity);
-        labelUser.setText("Username:");
-        labelUser.setTextSize(12);
-        layout.addView(labelUser);
+        layout.setPadding(pad, pad, pad, OverlayUI.dp(3));
 
         final EditText inputUser = new EditText(OverlayUI.activity);
         inputUser.setInputType(InputType.TYPE_CLASS_TEXT);
@@ -42,42 +38,26 @@ public class AuthDialog {
         passRow.setOrientation(LinearLayout.HORIZONTAL);
         passRow.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        LinearLayout passLabelInput = new LinearLayout(OverlayUI.activity);
-        passLabelInput.setOrientation(LinearLayout.VERTICAL);
-        passLabelInput.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-
-        TextView labelPass = new TextView(OverlayUI.activity);
-        labelPass.setText("Password:");
-        labelPass.setTextSize(12);
-        labelPass.setPadding(0, OverlayUI.dp(6), 0, 0);
-        passLabelInput.addView(labelPass);
-
         final EditText inputPass = new EditText(OverlayUI.activity);
         inputPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         inputPass.setHint("Password");
-        inputPass.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-        passLabelInput.addView(inputPass);
-
-        passRow.addView(passLabelInput);
+        inputPass.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        passRow.addView(inputPass);
 
         final EditText inputPassRepeat = new EditText(OverlayUI.activity);
         if (register) {
-            LinearLayout repeatLabelInput = new LinearLayout(OverlayUI.activity);
-            repeatLabelInput.setOrientation(LinearLayout.VERTICAL);
-            repeatLabelInput.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-
-            TextView labelPassRepeat = new TextView(OverlayUI.activity);
-            labelPassRepeat.setText("Confirm Password:");
-            labelPassRepeat.setTextSize(12);
-            labelPassRepeat.setPadding(0, OverlayUI.dp(6), 0, 0);
-            repeatLabelInput.addView(labelPassRepeat);
-
             inputPassRepeat.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
             inputPassRepeat.setHint("Confirm Password");
-            inputPassRepeat.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-            repeatLabelInput.addView(inputPassRepeat);
+            inputPassRepeat.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            passRow.addView(inputPassRepeat);
 
-            passRow.addView(repeatLabelInput);
+            inputPass.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
+            inputPass.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+                public boolean onEditorAction(TextView v, int actionId, android.view.KeyEvent event) {
+                    inputPassRepeat.requestFocus();
+                    return true;
+                }
+            });
         }
 
         layout.addView(passRow);

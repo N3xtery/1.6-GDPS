@@ -1,7 +1,11 @@
 #include "16gdps.h"
 
-static int percentageType = 2;
-#ifndef __APPLE__
+static int percentageType = 0;
+#if defined(__APPLE__)
+void updatePercentageNative(int percentageTypeLocal) {
+    percentageType = percentageTypeLocal;
+}
+#else
 extern "C" JNIEXPORT void JNICALL
 Java_com_necytdamu_onesixgdps_OverlayUI_updatePercentageNative(JNIEnv* env, jclass, jint percentageTypeJava) {
     percentageType = percentageTypeJava;
@@ -9,7 +13,7 @@ Java_com_necytdamu_onesixgdps_OverlayUI_updatePercentageNative(JNIEnv* env, jcla
 #endif
 
 static void* percentageLabel = nullptr;
-static void* (*getDirectorInstance)();
+void* (*getDirectorInstance)();
 static void (*nodeSetAnchorPoint)(void* self, void* point);
 static void (*nodeSetPos)(void* self, void* point);
 static void (*CCPointCons)(void* self, float x, float z);

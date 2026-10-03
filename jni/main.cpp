@@ -12,18 +12,6 @@
         vm_protect(mach_task_self(), (vm_address_t)pageStart, regionSize, FALSE, VM_PROT_READ | VM_PROT_EXECUTE);
         if (flush) sys_icache_invalidate((char*)targetAddr, size);
     }
-
-    void buildPlayLoadingDialog(const char* id) {
-
-    }
-
-    static void showButtonsGroup(const char* group, bool show) {
-
-    }
-
-    void showMessageBox(const char* title, const char* msg) {
-
-    }
 #else
     soinfo2* handle;
     static JavaVM* jvm = nullptr;
@@ -57,7 +45,7 @@
         env->DeleteLocalRef(cls);
     }
 
-    void buildPlayLoadingDialog(const char* id) {
+    void buildLoadingDialog(const char* id) {
         JNIEnv* env = nullptr;
         jvm->GetEnv((void**)&env, JNI_VERSION_1_4);
         jstring javaID = env->NewStringUTF(id);
@@ -130,7 +118,7 @@ struct Color {
 static void (*origColorSet)(void*, Color*);
 static void hookColorSet(void* self, Color* color) {
 #if defined(__APPLE__)
-
+    setColor((int)color->r, (int)color->g, (int)color->b);
 #else
     callJavaFunction("ColorPicker", "setColor", "(III)V", (int)color->r, (int)color->g, (int)color->b);
 #endif
@@ -156,7 +144,8 @@ static void (*origColorSlider)(DoubleColor*, int, int, int, double, double);
 static void hookColorSlider(DoubleColor* out, int unused, int h1, int h2, double s, double v) {
     origColorSlider(out, unused, h1, h2, s, v);
 #if defined(__APPLE__)
-    if ((uintptr_t)__builtin_return_address(0) - handle->base != 0x25F3F) s = s;
+    if ((uintptr_t)__builtin_return_address(0) - base != 0x25F3F)
+        setColor((int)(out->r * 255), (int)(out->g * 255), (int)(out->b * 255));
 #else
     if ((uintptr_t)__builtin_return_address(0) - handle->base != 0x1975B5)
         callJavaFunction("ColorPicker", "setColor", "(III)V", (int)(out->r * 255), (int)(out->g * 255), (int)(out->b * 255));
@@ -164,11 +153,15 @@ static void hookColorSlider(DoubleColor* out, int unused, int h1, int h2, double
 }
 #endif
 
+void setColorNative(int r, int g, int b) {
+    Color color = {(unsigned char)r, (unsigned char)g, (unsigned char)b};
+    origColorSet(colorPopup, &color);
+}
+
 #ifndef __APPLE__
 extern "C" JNIEXPORT void JNICALL
 Java_com_necytdamu_onesixgdps_ColorPicker_setColorNative(JNIEnv* env, jclass, jint r, jint g, jint b) {
-    Color color = {(unsigned char)r, (unsigned char)g, (unsigned char)b};
-    origColorSet(colorPopup, &color);
+    setColorNative(r, g, b);
 }
 #endif
 
@@ -190,6 +183,8 @@ static int hookLevelMenuShow(void* self, void* level) {
         break;
     }
 #if defined(__APPLE__)
+    setOriginalText(orig);
+    setStarsFeatured(getLevelStars(level), getLevelFeatured(level));
 #else
     callJavaFunction("OverlayUI", "setOriginalText", "(I)V", (jint)orig);
     callJavaFunction("RateMenu", "setStarsFeatured", "(IZ)V", (jint)getLevelStars(level), (jboolean)getLevelFeatured(level));
@@ -201,18 +196,11 @@ static int hookLevelMenuShow(void* self, void* level) {
 
 std::vector<std::pair<int, std::string>> customSongs;
 std::vector<std::pair<int, float>> songOffsets;
-static int (*origLevelEditShow)(void*, void*);
-static int hookLevelEditShow(void* self, void* level) {
+static bool copying = false;
+static void* (*origLevelEditShow)(void*);
+static void* hookLevelEditShow(void* level) {
     int localID = getLevelLocalID(level);
-#if defined(__APPLE__)
-    if ((uintptr_t)__builtin_return_address(0) - base == 0) {
-#elif defined(__i386__)
-    if ((uintptr_t)__builtin_return_address(0) - handle->base == 0x1BA606) {
-#elif defined(__ARM_ARCH_7A__)
-    if ((uintptr_t)__builtin_return_address(0) - handle->base == 0x1589D9) {
-#else
-    if ((uintptr_t)__builtin_return_address(0) - handle->base == 0x15B373) {
-#endif
+    if (copying) {
         copies.push_back(std::make_pair(localID, getLevelID(currentLevel)));
         int origLocalID = getLevelLocalID(currentLevel);
         for (int i = 0; i < customSongs.size(); i++) if (customSongs[i].first == origLocalID) {
@@ -238,6 +226,8 @@ static int hookLevelEditShow(void* self, void* level) {
     }
 
 #if defined(__APPLE__)
+    setCurrentSongID(song);
+    setCurrentSongOffset(offset);
 #else
     JNIEnv* env = nullptr;
     jvm->GetEnv((void**)&env, JNI_VERSION_1_4);
@@ -248,7 +238,7 @@ static int hookLevelEditShow(void* self, void* level) {
 #endif
 
     currentLevel = level;
-    return origLevelEditShow(self, level);
+    return origLevelEditShow(level);
 }
 
 static int (*origMainLevelsShow)(void*, int);
@@ -268,17 +258,55 @@ static int hookTransitionScene(float var, void* scene1, void* scene2) {
     return origTransitionScene(var, scene1, scene2);
 }
 
+static void* (*gameManagerCreateLevel)(void* self);
+static void* (*createTransition)(float val, void* scene, Color* color);
+static void (*replaceScene)(void* self, void* transition);
+static void* (*dictCreateLevel)(void* self);
+static void (*CCArrayInsert)(void* self, void* obj, int pos);
+static void goToLevel(void* level) {
+    void* director = getDirectorInstance();
+    void* scene = hookLevelEditShow(level);
+    Color color = {0, 0, 0};
+    void* transition = createTransition(0.5f, scene, &color);
+    replaceScene(director, transition);
+}
 #if defined(__APPLE__)
-static void cloneLevel(void* self) {}
+void cloneLevel() {
+    void* gameManager = gameManagerGetInstance();
+    *(int*)((char*)gameManager + 0x178) = 2;
+
+    void* levelManager = levelManagerGetInstance();
+    void* newLevel = gameManagerCreateLevel(levelManager);
+
+    *(std::string*)((char*)newLevel + 0x134) = std::string(*(std::string*)((char*)currentLevel + 0x134));
+    *(std::string*)((char*)newLevel + 0x12C) = std::string(*(std::string*)((char*)currentLevel + 0x12C));
+    *(int*)((char*)newLevel + 0x148) = *(int*)((char*)currentLevel + 0x148);
+
+    copying = true;
+    goToLevel(newLevel);
+    copying = false;
+}
 #else
 static void (*cloneLevel)(void* self);
 extern "C" JNIEXPORT void JNICALL
 Java_com_necytdamu_onesixgdps_OverlayUI_copyLevel(JNIEnv* env, jclass) {
     queueOnCocosThread([]() {
+        copying = true;
         cloneLevel(currentLevelLayer);
+        copying = false;
     });
 }
 #endif
+
+static void* (*keyCreateSearchObj)(const char* key);
+static void* (*levelBrowserScene)(void* searchObj);
+static void* (*origSearchScene)(void*, const char*);
+static void* hookSearchScene(void* self, const char* str) {
+    if (str && *str) {
+        void* searchObj = keyCreateSearchObj(str);
+        return levelBrowserScene(searchObj);
+    } else return nullptr;
+}
 
 static void (*dictSetIntForKey)(void* self, const char* key, int value);
 static void (*dictSetStrForKey)(void* self, const char* key, std::string* str);
@@ -351,11 +379,7 @@ static std::string changeHttpData(std::string newStr) {
 
 #if defined(__i386__) || defined(__APPLE__)
 void origHttpSetRequestData(void* self, const char* str, int len) {
-#if defined(__APPLE__)
-    auto data = (std::vector<char>*)((char*)self + 0x2C);
-#else
     auto data = (std::vector<char>*)((char*)self + 0x20);
-#endif
     data->assign(str, str + len);
 }
 static void (*origHttpSend)(void*, void*);
@@ -376,11 +400,7 @@ static void hookHttpSend(void* self, void* request) {
 #else
 void (*origHttpSetRequestData)(void*, const char*, int);
 static void hookHttpSetRequestData(void* self, const char* str, int len) {
-#if defined(__ARM_ARCH_7A__)
     if ((uintptr_t)__builtin_return_address(0) - handle->base == 0x163945) {
-#else
-    if ((uintptr_t)__builtin_return_address(0) - handle->base == 0x1665BF) {
-#endif
         std::string newStr = changeHttpData(std::string(str));
         const char* newCStr = newStr.c_str();
         origHttpSetRequestData(self, newCStr, strlen(newCStr));
@@ -438,8 +458,128 @@ static void* hookCreateLevelFromResponse(void* dict) {
     return level;
 }
 
+static void* editorLayer = nullptr;
+static void (*origEditorShow)(void*, void*);
+static void hookEditorShow(void* self, void* level) {
+    editorLayer = self;
+    origEditorShow(self, level);
+}
+
+static void replaceSubStr(std::string* str, const char* fromC, const char* toC) {
+    std::string from(fromC), to(toC);
+    for (std::string::size_type pos = 0; (pos = str->find(from, pos)) != std::string::npos; pos += to.size())
+        str->replace(pos, from.size(), to);
+}
+
+static const char* gmdConverts[] = {"<key>", "<k>", "</key>", "</k>", "<integer>", "<i>", "</integer>", "</i>", "<string>", "<s>", "</string>", "</s>",
+    "<real>", "<r>", "</real>", "</r>", "<true />", "<t />", "<false />", "<f />"};
+
+static void importGmd(const char* pathC) {
+    std::string path = std::string(pathC);
+    queueOnCocosThread([path]() {
+        FILE* f = fopen(path.c_str(), "r");
+        if (f) {
+            fseek(f, 0, SEEK_END);
+            int length = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            std::string data;
+            data.resize(length);
+            fread(&data[0], 1, length, f);
+            fclose(f);
+            for (int i = 0; i < 20; i += 2) replaceSubStr(&data, gmdConverts[i + 1], gmdConverts[i]);
+            char* dict = (char*)malloc(0xD4);
+            dsDictCons(dict);
+            dsStrToDict(dict, &data);
+            void* level = hookLevelReadXml(4, dict);
+            *(int*)((char*)level + 0x1E0) = 2; // type
+            void* levelManager = levelManagerGetInstance();
+            CCArrayInsert(*(void**)((char*)levelManager + 0x130), level, 0);
+            goToLevel(level);
+            free(dict);
+        }
+    });
+}
+
+static void exportGmd(const char* pathC) {
+    std::string path = std::string(pathC);
+    queueOnCocosThread([path]() {
+        FILE* f = fopen(path.c_str(), "w");
+        if (f) {
+            char* dict = (char*)malloc(0xD4);
+            dsDictCons(dict);
+            hookLevelWriteXml(currentLevel, dict);
+            #if defined(__i386__)
+            std::string data = dsDictToStr(dict);
+            #else
+            std::string data;
+            dsDictToStr(&data, dict);
+            #endif
+
+            for (int i = 0; i < 20; i += 2) replaceSubStr(&data, gmdConverts[i], gmdConverts[i + 1]);
+            fwrite(&data[0], 1, data.length(), f);
+            fclose(f);
+            free(dict);
+            showMessageBox("Success", "Level export successful");
+        } else showMessageBox("Error", "Level export failed");
+    });
+}
+
+static std::string* getCurrentLevelName() {
+    return (std::string*)((char*)currentLevel + 0x12C);
+}
+
+#if defined(__i386__)
+static std::string (*getLevelStr)(void* self);
+static int getCurrentLevelLength() {
+    getLevelStr(editorLayer);
+#else
+static void (*getLevelStr)(void** out, void* self);
+static int getCurrentLevelLength() {
+    void* str = nullptr;
+    getLevelStr(&str, editorLayer);
+#endif
+    int distance = *(int*)((char*)editorLayer + 0x164);
+    return (int)roundf((distance + 340.0f) / 311.0f);
+}
+
+#ifndef __APPLE__
+extern "C" JNIEXPORT void JNICALL
+Java_com_necytdamu_onesixgdps_OverlayUI_importGmd(JNIEnv* env, jclass, jstring pathJava) {
+    const char* pathC = env->GetStringUTFChars(pathJava, nullptr);
+    importGmd(pathC);
+    env->ReleaseStringUTFChars(pathJava, pathC);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_necytdamu_onesixgdps_OverlayUI_exportGmd(JNIEnv* env, jclass, jstring pathJava) {
+    const char* pathC = env->GetStringUTFChars(pathJava, nullptr);
+    exportGmd(pathC);
+    env->ReleaseStringUTFChars(pathJava, pathC);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_necytdamu_onesixgdps_OverlayUI_getCurrentLevelName(JNIEnv* env, jclass) {
+    return env->NewStringUTF(getCurrentLevelName()->c_str());
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_necytdamu_onesixgdps_OverlayUI_getCurrentLevelLength(JNIEnv* env, jclass) {
+    return getCurrentLevelLength();
+}
+#endif
+
+static void (*managerSave)(void* self);
+static void (*origSaveGame)(void*);
+static void hookSaveGame(void* self) {
+    origSaveGame(self);
+    if (*(bool*)((char*)self + 0x14)) {
+        void* levelManager = levelManagerGetInstance();
+        managerSave(levelManager);
+    }
+}
+
 #if defined(__APPLE__)
-void onLoad() {
+void iOSSetupNative() {
     base = _dyld_get_image_vmaddr_slide(0);
 
     dictSetIntForKey = (void(*)(void*, const char*, int))((base + 0x115008) | 1);
@@ -452,17 +592,21 @@ void onLoad() {
     getIntFromCCStr = (int(*)(void*))((base + 0x20EBC) | 1);
     getStrFromCCStr = (const char*(*)(void*))((base + 0x20C60) | 1);
     getFloatFromCCStr = (float(*)(void*))((base + 0x20ED4) | 1);
+    gameManagerCreateLevel = (void*(*)(void*))((base + 0x8D644) | 1);
+    createTransition = (void*(*)(float, void*, Color*))((base + 0x396E0) | 1);
+    replaceScene = (void(*)(void*, void*))((base + 0x17CD0) | 1);
+    managerSave = (void(*)(void*))((base + 0x1198D4) | 1);
 
     MSHookFunction((void*)((base + 0x26AE0) | 1), (void*)hookOptionsShow, (void**)&origOptionsShow);
     MSHookFunction((void*)((base + 0x26BC4) | 1), (void*)hookOptionsHide, (void**)&origOptionsHide);
     MSHookFunction((void*)((base + 0xBBDB8) | 1), (void*)hookLevelSettingsShow, (void**)&origLevelSettingsShow);
-    MSHookFunction((void*)((base + 0xBD348) | 1), (void*)hookLevelSettingsHide, (void**)&origLevelSettingsHide);
+    MSHookFunction((void*)((base + 0xBBB68) | 1), (void*)hookLevelSettingsHide, (void**)&origLevelSettingsHide);
     MSHookFunction((void*)((base + 0x23ED8) | 1), (void*)hookColorSettingsShow, (void**)&origColorSettingsShow);
     MSHookFunction((void*)((base + 0x24774) | 1), (void*)hookColorSettingsHide, (void**)&origColorSettingsHide);
     MSHookFunction((void*)((base + 0x24670) | 1), (void*)hookColorSet, (void**)&origColorSet);
     MSHookFunction((void*)((base + 0x28658) | 1), (void*)hookColorSlider, (void**)&origColorSlider);
     MSHookFunction((void*)((base + 0xBD750) | 1), (void*)hookLevelMenuShow, (void**)&origLevelMenuShow);
-    MSHookFunction((void*)((base + 0x7C414) | 1), (void*)hookLevelEditShow, (void**)&origLevelEditShow);
+    MSHookFunction((void*)((base + 0x7C2C0) | 1), (void*)hookLevelEditShow, (void**)&origLevelEditShow);
     MSHookFunction((void*)((base + 0xC7A0C) | 1), (void*)hookMainLevelsShow, (void**)&origMainLevelsShow);
     MSHookFunction((void*)((base + 0x9E6BC) | 1), (void*)hookLevelWriteXml, (void**)&origLevelWriteXml);
     MSHookFunction((void*)((base + 0xD3A4C) | 1), (void*)hookLevelReadXml, (void**)&origLevelReadXml);
@@ -513,6 +657,19 @@ JNI_OnLoad(JavaVM* vm, void* reserved) {
     getIntFromCCStr = (int(*)(void*))(dlsym(handle, "_ZNK7cocos2d8CCString8intValueEv"));
     getStrFromCCStr = (const char*(*)(void*))(dlsym(handle, "_ZNK7cocos2d8CCString10getCStringEv"));
     getFloatFromCCStr = (float(*)(void*))(dlsym(handle, "_ZNK7cocos2d8CCString10floatValueEv"));
+    gameManagerCreateLevel = (void*(*)(void*))(dlsym(handle, "_ZN16GameLevelManager14createNewLevelEv"));
+    createTransition = (void*(*)(float, void*, Color*))(dlsym(handle, "_ZN7cocos2d16CCTransitionFade6createEfPNS_7CCSceneERKNS_10_ccColor3BE"));
+    replaceScene = (void(*)(void*, void*))(dlsym(handle, "_ZN7cocos2d10CCDirector12replaceSceneEPNS_7CCSceneE"));
+    dictCreateLevel = (void*(*)(void*))(dlsym(handle, "_ZN11GJGameLevel15createWithCoderEP13DS_Dictionary"));
+    CCArrayInsert = (void(*)(void*, void*, int))(dlsym(handle, "_ZN7cocos2d7CCArray12insertObjectEPNS_8CCObjectEj"));
+    keyCreateSearchObj = (void*(*)(const char*))(dlsym(handle, "_ZN14GJSearchObject13createFromKeyEPKc"));
+    levelBrowserScene = (void*(*)(void*))(dlsym(handle, "_ZN17LevelBrowserLayer5sceneEP14GJSearchObject"));
+    managerSave = (void(*)(void*))(dlsym(handle, "_ZN8GManager4saveEv"));
+#if defined(__i386__)
+    getLevelStr = (std::string(*)(void*))(dlsym(handle, "_ZN16LevelEditorLayer14getLevelStringEv"));
+#else
+    getLevelStr = (void(*)(void**, void*))(dlsym(handle, "_ZN16LevelEditorLayer14getLevelStringEv"));
+#endif
 
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN12OptionsLayer6createEv") | THUMB_BIT),
                   (void*)hookOptionsShow, (void**)&origOptionsShow);
@@ -546,7 +703,7 @@ JNI_OnLoad(JavaVM* vm, void* reserved) {
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN14LevelInfoLayer4initEP11GJGameLevel") | THUMB_BIT),
                   (void*)hookLevelMenuShow, (void**)&origLevelMenuShow);
 
-    ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN14EditLevelLayer4initEP11GJGameLevel") | THUMB_BIT),
+    ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN14EditLevelLayer5sceneEP11GJGameLevel") | THUMB_BIT),
                   (void*)hookLevelEditShow, (void**)&origLevelEditShow);
 
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN16LevelSelectLayer4initEi") | THUMB_BIT),
@@ -569,6 +726,15 @@ JNI_OnLoad(JavaVM* vm, void* reserved) {
 
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN7cocos2d16CCTransitionFade6createEfPNS_7CCSceneERKNS_10_ccColor3BE") | THUMB_BIT),
                   (void*)hookTransitionScene, (void**)&origTransitionScene);
+
+    ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN16GameLevelManager14getSearchSceneEPKc") | THUMB_BIT),
+                  (void*)hookSearchScene, (void**)&origSearchScene);
+
+    ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN16LevelEditorLayer4initEP11GJGameLevel") | THUMB_BIT),
+                  (void*)hookEditorShow, (void**)&origEditorShow);
+
+    ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN11AppDelegate11trySaveGameEv") | THUMB_BIT),
+                  (void*)hookSaveGame, (void**)&origSaveGame);
 
     networkcpp_init();
     percentagecpp_init();
@@ -610,18 +776,10 @@ JNI_OnLoad(JavaVM* vm, void* reserved) {
     mprotectPatch(0x14FFFC, &patchLimit, 4, false);
     mprotectPatch(0x14F21C, &patchLimit, 4, false);
 
-    const uintptr_t serverAddrs[] = {0x3FEEB2, 0x3FEF07, 0x3FEF67, 0x3FEFD4, 0x3FF006, 0x3FF078, 0x3FF0CD, 0x3FF11C, 0x3FF163, 0x3FF1CA, 0x3FF1FC, 0x3FF264, 0x3FF2B6, 0x3FF2FC, 0x3FF36F, 0x3FF3D9, 0x3FF499};
-#else
-    uint16_t patchNewBlock = 0x3FFF;
-    mprotectPatch(0x1529E4, &patchNewBlock, 2, true);
-    mprotectPatch(0x1513A4, &patchNewBlock, 2, true);
-    uint32_t patchMaxError = 0x01C92180;
-    mprotectPatch(0x150CA4, &patchMaxError, 4, true);
-    uint32_t patchPause = 0x01D22280;
-    mprotectPatch(0x168E3A, &patchPause, 4, true);
-    mprotectPatch(0x3035BF, (void*)path, strlen(path), false);
+    uint16_t skip = 0xBF00;
+    mprotectPatch(0x15AA58, &skip, 2, true);
 
-    const uintptr_t serverAddrs[] = {0x40C8B2, 0x40C907, 0x40C967, 0x40C9D4, 0x40CA06, 0x40CA78, 0x40CACD, 0x40CB1C, 0x40CB63, 0x40CBCA, 0x40CBFC, 0x40CC64, 0x40CCB6, 0x40CCFC, 0x40CD6F, 0x40CDD9, 0x40CE99};
+    const uintptr_t serverAddrs[] = {0x3FEEB2, 0x3FEF07, 0x3FEF67, 0x3FEFD4, 0x3FF006, 0x3FF078, 0x3FF0CD, 0x3FF11C, 0x3FF163, 0x3FF1CA, 0x3FF1FC, 0x3FF264, 0x3FF2B6, 0x3FF2FC, 0x3FF36F, 0x3FF3D9, 0x3FF499};
 #endif
     for (int i = 0; i < 17; i++) mprotectPatch(serverAddrs[i], (void*)server, strlen(server), false);
 

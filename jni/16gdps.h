@@ -9,8 +9,8 @@
     #include <mach/mach.h>
     #include <libkern/OSCacheControl.h>
     #include <syslog.h>
+    #include "../iOS/iOSBridge.h"
     extern uintptr_t base;
-    extern void onLoad();
 #else
     #include <dlfcn.h>
     #include <jni.h>
@@ -33,12 +33,12 @@
         unsigned size;
     };
     extern soinfo2* handle;
+    extern void buildLoadingDialog(const char* id);
+    extern void showMessageBox(const char* title, const char* msg);
 #endif
 
 // main.cpp
-extern void buildPlayLoadingDialog(const char* id);
 extern void mprotectPatch(uintptr_t addr, void* patch, int size, bool flush);
-extern void showMessageBox(const char* title, const char* msg);
 extern std::vector<std::pair<int, std::string>> customSongs;
 extern std::vector<std::pair<int, float>> songOffsets;
 extern void* currentLevel;
@@ -51,12 +51,24 @@ extern void (*origHttpSetRequestData)(void*, const char*, int);
 extern int getLevelID(void* self);
 extern int getLevelLocalID(void* self);
 
+// network.cpp
 extern void* (*gameManagerGetInstance)();
+extern void* (*levelManagerGetInstance)();
+extern void (*dsDictCons)(void* self);
+extern bool (*dsStrToDict)(void* self, std::string* str);
+#if defined(__i386__)
+extern std::string (*dsDictToStr)(void* self);
+#else
+extern void (*dsDictToStr)(std::string* out, void* self);
+#endif
 extern void networkcpp_init();
 
+// percentage.cpp
 extern void* getPlayerPosition(void* self);
+extern void* (*getDirectorInstance)();
 extern void percentagecpp_init();
 
+//songs.cpp
 extern void songscpp_init();
 
 // utils.cpp
@@ -79,7 +91,7 @@ void queueOnCocosThread(F fn) {
     queueOnCocosThreadImpl(new CallableImpl<F>(fn));
 }
 extern std::string gzipCompress(const std::string& data);
-std::string gzipDecompress(const char* data, size_t dataSize);
+extern std::string gzipDecompress(const char* data, size_t dataSize);
 extern std::string base64Encode(const std::string& data);
 extern std::string base64Decode(const char* s);
 extern void utilscpp_init();
