@@ -41,7 +41,7 @@ public class OverlayUI {
     private static Button registerBtn, loginBtn, logoutBtn, saveBtn, loadBtn, reqBtn, percentBtn, songsBtn, gmdImportBtn;
     private static Button copyBtn, rateBtn;
     private static Button offsetBtn, origSongBtn, customSongBtn, colorBtn, gmdExportBtn;
-    private static TextView lengthLabel;
+    private static TextView lengthLabel, origLabel;
     private static boolean moderator = false;
     private static int percentageType = 0;
     public static Activity activity;
@@ -147,8 +147,9 @@ public class OverlayUI {
                 File songsDir = null;
                 String menuSong = "";
                 String practiceSong = "";
+                Properties props = null;
                 if (configFile.exists()) {
-                    Properties props = loadConfig();
+                    props = loadConfig();
                     user = props.getProperty("username");
                     pass = props.getProperty("password");
                     if (!user.isEmpty() && !pass.isEmpty()) logged_in = true;
@@ -160,27 +161,9 @@ public class OverlayUI {
                         if (!songsDir.isDirectory()) songsDir = null;
                     }
                     menuSong = props.getProperty("menuSong");
-                    if (!menuSong.isEmpty()) {
-                        File menuSongFile = new File(songsDir, menuSong + ".mp3");
-                        if (menuSongFile.exists()) SongsDialog.updateMenuPractSongNative(true, menuSongFile.getAbsolutePath(), false);
-                        else {
-                            menuSong = "";
-                            props.setProperty("menuSong", "");
-                            saveConfig(props);
-                        }
-                    }
                     practiceSong = props.getProperty("practiceSong");
-                    if (!practiceSong.isEmpty()) {
-                        File practSongFile = new File(songsDir, practiceSong + ".mp3");
-                        if (practSongFile.exists()) SongsDialog.updateMenuPractSongNative(false, practSongFile.getAbsolutePath(), false);
-                        else {
-                            practiceSong = "";
-                            props.setProperty("practiceSong", "");
-                            saveConfig(props);
-                        }
-                    }
                 } else {
-                    Properties props = new Properties();
+                    props = new Properties();
                     props.setProperty("username", "");
                     props.setProperty("password", "");
                     props.setProperty("moderator", "0");
@@ -193,6 +176,24 @@ public class OverlayUI {
                 if (songsDir == null) {
                     songsDir = new File(mainDir, "songs");
                     if (!songsDir.exists()) songsDir.mkdir();
+                }
+                if (!menuSong.isEmpty()) {
+                    File menuSongFile = new File(songsDir, menuSong + ".mp3");
+                    if (menuSongFile.exists()) SongsDialog.updateMenuPractSongNative(true, menuSongFile.getAbsolutePath(), false);
+                    else {
+                        menuSong = "";
+                        props.setProperty("menuSong", "");
+                        saveConfig(props);
+                    }
+                }
+                if (!practiceSong.isEmpty()) {
+                    File practSongFile = new File(songsDir, practiceSong + ".mp3");
+                    if (practSongFile.exists()) SongsDialog.updateMenuPractSongNative(false, practSongFile.getAbsolutePath(), false);
+                    else {
+                        practiceSong = "";
+                        props.setProperty("practiceSong", "");
+                        saveConfig(props);
+                    }
                 }
                 SongsDialog.updateSongsPathNative(songsDir.getAbsolutePath() + "/");
                 SongsDialog.setSongVars(songsDir, menuSong, practiceSong);
@@ -227,6 +228,10 @@ public class OverlayUI {
                 loadBtn.setText("Load");
                 logoutBtn = new Button(activity);
                 logoutBtn.setText("Log out");
+                origLabel = new TextView(activity);
+                origLabel.setShadowLayer(3.0f, 2.0f, 2.0f, android.graphics.Color.BLACK);
+                origLabel.setTextSize(18);
+                origLabel.setVisibility(View.GONE);
 
                 gmdImportBtn.setOnClickListener(new View.OnClickListener() {
                     public void onClick(View view) {
@@ -289,6 +294,7 @@ public class OverlayUI {
                 saveBtn.setVisibility(View.GONE);
                 loadBtn.setVisibility(View.GONE);
                 logoutBtn.setVisibility(View.GONE);
+                origLabel.setVisibility(View.GONE);
 
                 ViewGroup content = (ViewGroup)activity.findViewById(android.R.id.content);
                 optionsRow.addView(gmdImportBtn, lp);
@@ -300,6 +306,7 @@ public class OverlayUI {
                 optionsRow.addView(saveBtn, lp);
                 optionsRow.addView(loadBtn, lp);
                 optionsRow.addView(logoutBtn, lp);
+                optionsRow.addView(origLabel);
                 content.addView(optionsRow);
 
                 LinearLayout levelMenuRow = new LinearLayout(activity);
@@ -394,7 +401,7 @@ public class OverlayUI {
                         builder.setTitle("File name");
                         builder.setView(layout);
 
-                        builder.setPositiveButton("Select a folder", new DialogInterface.OnClickListener() {
+                        builder.setPositiveButton("Export to...", new DialogInterface.OnClickListener() {
                             public void onClick(DialogInterface dialog, int which) {
                                 final String filename = input.getText().toString();
                                 if (!filename.isEmpty()) {
@@ -434,16 +441,15 @@ public class OverlayUI {
                 lengthLabel.setShadowLayer(3.0f, 2.0f, 2.0f, android.graphics.Color.BLACK);
                 lengthLabel.setTextSize(20);
                 lengthLabel.setVisibility(View.GONE);
-                lengthLabel.setLayoutParams(labelParams);
 
                 creatorColumn.addView(creatorRow);
-                creatorColumn.addView(lengthLabel);
+                creatorColumn.addView(lengthLabel, labelParams);
                 content.addView(creatorColumn);
             }
         });
     }
 
-    public static void setButtonVisible(final String button, final boolean visible) {
+    public static void showGroup(final String button, final boolean visible) {
         final int length = (button.equals("LevelSettings") && visible == true) ? getCurrentLevelLength() : 0;
         activity.runOnUiThread(new Runnable() {
             public void run() {
@@ -472,6 +478,8 @@ public class OverlayUI {
                     lengthLabel.setVisibility(visible ? View.VISIBLE : View.GONE);
                 } else if (button.equals("Color")) {
                     colorBtn.setVisibility(visible ? View.VISIBLE : View.GONE);
+                } else if (button.equals("LevelInfo")) {
+                    if (!origLabel.getText().equals("original ID: 0")) origLabel.setVisibility(visible ? View.VISIBLE : View.GONE);
                 }
             }
         });
@@ -480,8 +488,7 @@ public class OverlayUI {
     public static void setOriginalText(final int orig) {
         activity.runOnUiThread(new Runnable() {
             public void run() {
-                if (orig == 0) copyBtn.setText("Copy");
-                else copyBtn.setText(String.format("Copy (%d)", orig));
+                origLabel.setText("original ID: " + Integer.toString(orig));
             }
         });
     }
@@ -593,16 +600,6 @@ public class OverlayUI {
 
     public static void setOrigSongBtnVisible() { origSongBtn.setVisibility(View.VISIBLE); }
     public static void disableRateBtn() { rateBtn.setEnabled(false); }
-    public static void setCurrentLevelLength(final int length) {
-        activity.runOnUiThread(new Runnable() {
-            public void run() {
-                if (customSongBtn.getVisibility() == View.VISIBLE) {
-                    lengthLabel.setText("Length: " + Integer.toString(length) + "s");
-                    lengthLabel.setVisibility(View.VISIBLE);
-                }
-            }
-        });
-    }
 
     public static void onDestroy() {
         AuthDialog.dismiss();

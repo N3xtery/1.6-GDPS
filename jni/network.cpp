@@ -17,9 +17,9 @@ static void (*cocosStrCons)(void* obj, const char* src, int size, int trail);
 static void httpRequestCons(void* httpRequest) {
     memset(httpRequest, 0, 0x4C);
     cocosObjCons(httpRequest);
-    *(uintptr_t*)httpRequest = handle->base + 0x63E128;
+    *(uintptr_t*)httpRequest = base + 0x63E128;
 
-    uintptr_t emptyRepPtr = handle->base + 0x66B408;
+    uintptr_t emptyRepPtr = base + 0x66B408;
     uintptr_t emptyRepData = emptyRepPtr + 0x0C;
     uint32_t  emptyLen = *(uint32_t*)emptyRepPtr;
 
@@ -44,7 +44,7 @@ static void httpRequestSetCallback(void* httpRequest, void* target, void* callba
 }
 static void* (*httpGetInstance)();
 static void (*httpInstanceSend)(void* httpInstance, void* httpRequest);
-static void (*httpRequestRelease)(void* httpRequest);
+static void (*cocosObjRelease)(void* httpRequest);
 static void sendPacket(const char* url, const char* data, void* callback) {
     char* httpRequest = (char*)malloc(0x4c);
     httpRequestCons(httpRequest);
@@ -61,7 +61,7 @@ static void sendPacket(const char* url, const char* data, void* callback) {
     void* httpInstance = httpGetInstance();
     httpRequestSetCallback(httpRequest, httpInstance, callback);
     httpInstanceSend(httpInstance, httpRequest);
-    httpRequestRelease(httpRequest);
+    cocosObjRelease(httpRequest);
 }
 
 static void registerCallback(void* self, void* node, void* response) {
@@ -180,6 +180,10 @@ static void loadCallback(void* self, void* node, void* response) {
             gameManagerLoadData(gameManager, dict);
 
             if (!noLevels) {
+                copies.clear();
+                customSongs.clear();
+                songOffsets.clear();
+
                 std::string levelDataDecoded = base64Decode(levelData.c_str());
                 std::string levelDataDecompressed = gzipDecompress(levelDataDecoded.c_str(), levelDataDecoded.size());
                 dsDictCons(dict);
@@ -367,36 +371,36 @@ Java_com_necytdamu_onesixgdps_OverlayUI_sendReqRequest(JNIEnv* env, jclass, jstr
 
 void networkcpp_init() {
 #if defined(__APPLE__)
-    httpRequestCons = (void(*)(void*))((base + 0xA0E28) | 1);
-    cocosObjRetain = (void(*)(void*))((base + 0x20094) | 1);
-    httpGetInstance = (void*(*)())((base + 0x2D5B4) | 1);
-    httpInstanceSend = (void(*)(void*, void*))((base + 0x2E25C) | 1);
-    httpRequestRelease = (void(*)(void*))((base + 0x20078) | 1);
+    httpRequestCons = (void(*)(void*))((base + HTTP_CONS_ADDR) | 1);
+    cocosObjRetain = (void(*)(void*))((base + COCOS_OBJ_RETAIN_ADDR) | 1);
+    httpGetInstance = (void*(*)())((base + GET_HTTP_INST_ADDR) | 1);
+    httpInstanceSend = (void(*)(void*, void*))((base + HTTP_SEND_ADDR) | 1);
+    cocosObjRelease = (void(*)(void*))((base + COCOS_OBJ_RELEASE_ADDR) | 1);
 
-    dsDictCons = (void(*)(void*))((base + 0x1147AC) | 1);
-    gameManagerGetInstance = (void*(*)())((base + 0xA133C) | 1);
-    gameManagerEncodeData = (void(*)(void*, void*))((base + 0xA391C) | 1);
-    levelManagerGetInstance = (void*(*)())((base + 0x157F84) | 1);
-    levelManagerEncodeData = (void(*)(void*, void*))((base + 0x15824C) | 1);
-    dsDictToStr = (void(*)(std::string*, void*))((base + 0x1149B0) | 1);
+    dsDictCons = (void(*)(void*))((base + DICT_CONS_ADDR) | 1);
+    gameManagerGetInstance = (void*(*)())((base + GET_GAME_MNGR_INST_ADDR) | 1);
+    gameManagerEncodeData = (void(*)(void*, void*))((base + GAME_MNGR_ENCODE_ADDR) | 1);
+    levelManagerGetInstance = (void*(*)())((base + GET_LVL_MNGR_INST_ADDR) | 1);
+    levelManagerEncodeData = (void(*)(void*, void*))((base + LVL_MNGR_ENCODE_ADDR) | 1);
+    dsDictToStr = (void(*)(std::string*, void*))((base + DICT_TO_STR_ADDR) | 1);
 
-    dsStrToDict = (bool(*)(void*, std::string*))((base + 0x114920) | 1);
-    gameManagerLoadData = (void(*)(void*, void*))((base + 0xA3058) | 1);
-    levelManagerLoadData = (void(*)(void*, void*))((base + 0x158268) | 1);
-    responseToStr = (void(*)(std::string*, void*))((base + 0x118EF8) | 1);
+    dsStrToDict = (bool(*)(void*, std::string*))((base + STR_TO_DICT_ADDR) | 1);
+    gameManagerLoadData = (void(*)(void*, void*))((base + GAME_MNGR_LOAD_ADDR) | 1);
+    levelManagerLoadData = (void(*)(void*, void*))((base + LVL_MNGR_LOAD_ADDR) | 1);
+    responseToStr = (void(*)(std::string*, void*))((base + RESPONSE_TO_STR_ADDR) | 1);
 #else
 #if defined(__i386__)
     cocosObjCons = (void(*)(void*))(dlsym(handle, "_ZN7cocos2d8CCObjectC2Ev"));
-    cocosStrCons = (void(*)(void*, const char*, int, int))(0x418600 + handle->base);
-    httpRequestSetURL = (void(*)(const char*, const char*, int))(0x418840 + handle->base);
+    cocosStrCons = (void(*)(void*, const char*, int, int))(0x418600 + base);
+    httpRequestSetURL = (void(*)(const char*, const char*, int))(0x418840 + base);
 #else
-    httpRequestCons = (void(*)(void*))((0x119D8C + handle->base) | 1);
-    httpRequestSetURL = (void(*)(void*, const char*))((0x15E568 + handle->base) | 1);
+    httpRequestCons = (void(*)(void*))((0x119D8C + base) | 1);
+    httpRequestSetURL = (void(*)(void*, const char*))((0x15E568 + base) | 1);
 #endif
     cocosObjRetain = (void(*)(void*))(dlsym(handle, "_ZN7cocos2d8CCObject6retainEv"));
     httpGetInstance = (void*(*)())(dlsym(handle, "_ZN7cocos2d9extension12CCHttpClient11getInstanceEv"));
     httpInstanceSend = (void(*)(void*, void*))(dlsym(handle, "_ZN7cocos2d9extension12CCHttpClient4sendEPNS0_13CCHttpRequestE"));
-    httpRequestRelease = (void(*)(void*))(dlsym(handle, "_ZN7cocos2d8CCObject7releaseEv"));
+    cocosObjRelease = (void(*)(void*))(dlsym(handle, "_ZN7cocos2d8CCObject7releaseEv"));
 
     dsDictCons = (void(*)(void*))(dlsym(handle, "_ZN13DS_DictionaryC1Ev"));
     gameManagerGetInstance = (void*(*)())(dlsym(handle, "_ZN11GameManager11sharedStateEv"));

@@ -3,6 +3,6 @@
 /libs
 /out
 /obj
-/iOS
+/iOS/layout/Applications/1.6 GDPS.app/*
 /iOS/packages
 /iOS/.theos

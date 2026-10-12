@@ -2,6 +2,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include "addresses.h"
 
 #if defined(__APPLE__)
     #include <substrate.h>
@@ -10,7 +11,6 @@
     #include <libkern/OSCacheControl.h>
     #include <syslog.h>
     #include "../iOS/iOSBridge.h"
-    extern uintptr_t base;
 #else
     #include <dlfcn.h>
     #include <jni.h>
@@ -32,13 +32,15 @@
         unsigned base;
         unsigned size;
     };
-    extern soinfo2* handle;
+    extern void* handle;
     extern void buildLoadingDialog(const char* id);
     extern void showMessageBox(const char* title, const char* msg);
 #endif
 
 // main.cpp
+extern uintptr_t base;
 extern void mprotectPatch(uintptr_t addr, void* patch, int size, bool flush);
+extern std::vector<std::pair<int, int>> copies;
 extern std::vector<std::pair<int, std::string>> customSongs;
 extern std::vector<std::pair<int, float>> songOffsets;
 extern void* currentLevel;

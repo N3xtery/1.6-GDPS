@@ -103,7 +103,7 @@ public class SongsDialog {
         offsetDialog.show();
     }
 
-    private static void updateSongsPath(File dir, EditText inputPath, boolean defaultPath) {
+    private static void updateSongsPath(File dir, EditText inputPath, boolean defaultPath, boolean levelSettings) {
         if (!dir.getAbsolutePath().equals(songsDir.getAbsolutePath())) {
             songsDir = dir;
             String path = songsDir.getAbsolutePath();
@@ -113,12 +113,12 @@ public class SongsDialog {
             updateSongsPathNative(path + "/");
             inputPath.setText(path);
             if (!menuSong.isEmpty()) {
-                updateMenuPractSongNative(true, "", true);
-                menuSong = updateMenuPractSong(null, null, menuSong, "menuSong", menuSong, 3);
+                updateMenuPractSongNative(true, "", levelSettings ? false : true);
+                menuSong = updateMenuPractSong(null, null, menuSong, "menuSong", menuSong);
             }
             if (!practiceSong.isEmpty()) {
                 updateMenuPractSongNative(false, "", false);
-                practiceSong = updateMenuPractSong(null, null, practiceSong, "practiceSong", practiceSong, 4);
+                practiceSong = updateMenuPractSong(null, null, practiceSong, "practiceSong", practiceSong);
             }
         }
     }
@@ -150,6 +150,8 @@ public class SongsDialog {
 
         final EditText inputPath = new EditText(OverlayUI.activity);
         inputPath.setInputType(InputType.TYPE_NULL);
+        inputPath.setHorizontallyScrolling(true);
+        inputPath.setFocusable(false);
         inputPath.setText(songsDir.getAbsolutePath());
         inputPath.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         pathLabelInput.addView(inputPath);
@@ -160,7 +162,7 @@ public class SongsDialog {
             public void onClick(View view) {
                 new FileBrowser("mp3", true, new FileBrowser.Callback() {
                     public void onSelected(File dir) {
-                        updateSongsPath(dir, inputPath, false);
+                        updateSongsPath(dir, inputPath, false, levelSettings);
                         songsTablePopulate(table, levelSettings);
                     }
                 });
@@ -173,7 +175,7 @@ public class SongsDialog {
             public void onClick(View view) {
                 File mainDir = OverlayUI.activity.getFilesDir();
                 File songsDirNew = new File(mainDir, "songs");
-                updateSongsPath(songsDirNew, inputPath, true);
+                updateSongsPath(songsDirNew, inputPath, true, levelSettings);
                 songsTablePopulate(table, levelSettings);
             }
         });
@@ -372,7 +374,7 @@ public class SongsDialog {
         }).start();
     }
 
-    private static String updateMenuPractSong(TableLayout table, Button btn, String songGlobal, String songProperties, String id, int pos) {
+    private static String updateMenuPractSong(TableLayout table, Button btn, String songGlobal, String songProperties, String id) {
         if (id.equals(songGlobal)) {
             songGlobal = "";
             if (btn != null) btn.setTextColor(Color.RED);
@@ -381,7 +383,7 @@ public class SongsDialog {
                 TableRow row = (TableRow)table.getChildAt(i);
                 String rowId = ((TextView)row.getChildAt(0)).getText().toString();
                 if (rowId.equals(songGlobal)) {
-                    Button oldBtn = (Button)(row.getChildAt(pos));
+                    Button oldBtn = (Button)(row.getChildAt(songProperties.equals("menuSong") ? 3 : 4));
                     oldBtn.setTextColor(Color.RED);
                 }
             }
@@ -436,7 +438,7 @@ public class SongsDialog {
                         TableRow row = (TableRow)table.getChildAt(i);
                         String rowId = ((TextView)row.getChildAt(0)).getText().toString();
                         if (rowId.equals(currentSongID)) {
-                            Button oldBtn = (Button)(row.getChildAt(4));
+                            Button oldBtn = (Button)(row.getChildAt(3));
                             oldBtn.setEnabled(true);
                         }
                     }
@@ -455,7 +457,7 @@ public class SongsDialog {
             menuBtn.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    menuSong = updateMenuPractSong(table, menuBtn, menuSong, "menuSong", id, 3);
+                    menuSong = updateMenuPractSong(table, menuBtn, menuSong, "menuSong", id);
                     File songFile = new File(songsDir, menuSong + ".mp3");
                     updateMenuPractSongNative(true, menuSong.isEmpty() ? "" : songFile.getAbsolutePath(), true);
                 }
@@ -469,7 +471,7 @@ public class SongsDialog {
             practBtn.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    practiceSong = updateMenuPractSong(table, practBtn, practiceSong, "practiceSong", id, 4);
+                    practiceSong = updateMenuPractSong(table, practBtn, practiceSong, "practiceSong", id);
                     File songFile = new File(songsDir, practiceSong + ".mp3");
                     updateMenuPractSongNative(false, songFile.getAbsolutePath(), false);
                 }
@@ -484,11 +486,11 @@ public class SongsDialog {
             public void onClick(View v) {
                 if (id.equals(menuSong)) {
                     updateMenuPractSongNative(true, "", true);
-                    menuSong = updateMenuPractSong(null, null, menuSong, "menuSong", id, 3);
+                    menuSong = updateMenuPractSong(null, null, menuSong, "menuSong", id);
                 }
                 if (id.equals(practiceSong)) {
                     updateMenuPractSongNative(false, "", false);
-                    practiceSong = updateMenuPractSong(null, null, practiceSong, "practiceSong", id, 4);
+                    practiceSong = updateMenuPractSong(null, null, practiceSong, "practiceSong", id);
                 }
                 boolean deleted = file.delete();
                 if (deleted) {

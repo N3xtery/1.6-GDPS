@@ -70,7 +70,7 @@ std::string gzipDecompress(const char* data, size_t dataSize) {
     strm.next_in  = reinterpret_cast<Bytef*>(const_cast<char*>(data));
     strm.avail_in = static_cast<uInt>(dataSize);
 
-    int ret = inflateInit2(&strm, 15 + 16);
+    int ret = inflateInit2(&strm, 15 + 32);
     if (ret != Z_OK) return {};
 
     size_t totalOut = 0;
@@ -152,7 +152,7 @@ std::string base64Decode(const char* s) {
 
 void utilscpp_init() {
 #if defined(__APPLE__)
-    MSHookFunction((void*)((base + 0x1A8B0) | 1), (void*)hookScheduler, (void**)&origScheduler);
+    MSHookFunction((void*)((base + COCOS_SCHEDULER_ADDR) | 1), (void*)hookScheduler, (void**)&origScheduler);
 #else
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN7cocos2d11CCScheduler6updateEf") | THUMB_BIT),
                   (void*)hookScheduler, (void**)&origScheduler);

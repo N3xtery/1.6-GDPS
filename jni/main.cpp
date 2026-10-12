@@ -1,8 +1,9 @@
 #include "16gdps.h"
 #include <algorithm>
+#include <cmath>
 
+uintptr_t base;
 #if defined(__APPLE__)
-    uintptr_t base;
     void mprotectPatch(uintptr_t addr, void* patch, int size, bool flush) {
         uintptr_t targetAddr = base + addr;
         uintptr_t pageStart = targetAddr & ~0xFFFUL;
@@ -13,11 +14,11 @@
         if (flush) sys_icache_invalidate((char*)targetAddr, size);
     }
 #else
-    soinfo2* handle;
+    void* handle;
     static JavaVM* jvm = nullptr;
 
     void mprotectPatch(uintptr_t addr, void* patch, int size, bool flush) {
-        uintptr_t targetAddr = handle->base + addr;
+        uintptr_t targetAddr = base + addr;
         uintptr_t pageStart = targetAddr & ~0xFFF;
         mprotect((void*)pageStart, 0x2000, PROT_READ | PROT_WRITE | PROT_EXEC);
         memcpy((void*)targetAddr, patch, size);
@@ -53,11 +54,11 @@
         env->DeleteLocalRef(javaID);
     }
 
-    static void showButtonsGroup(const char* group, bool show) {
+    static void showGroup(const char* group, bool show) {
         JNIEnv* env = nullptr;
         jvm->GetEnv((void**)&env, JNI_VERSION_1_4);
         jstring javaGroup = env->NewStringUTF(group);
-        callJavaFunction("OverlayUI", "setButtonVisible", "(Ljava/lang/String;Z)V", javaGroup, (jboolean)show);
+        callJavaFunction("OverlayUI", "showGroup", "(Ljava/lang/String;Z)V", javaGroup, (jboolean)show);
         env->DeleteLocalRef(javaGroup);
     }
 
@@ -72,27 +73,32 @@
     }
 #endif
 
+bool optionsShown = false;
 static int (*origOptionsShow)(void*);
 static int hookOptionsShow(void* self) {
-    showButtonsGroup("Options", true);
+    showGroup("Options", true);
+    optionsShown = true;
     return origOptionsShow(self);
 }
 
-static int (*origOptionsHide)(void*);
-static int hookOptionsHide(void* self) {
-    showButtonsGroup("Options", false);
-    return origOptionsHide(self);
+static int (*origDropdownExit)(void*);
+static int hookDropdownExit(void* self) {
+    if (optionsShown) {
+        showGroup("Options", false);
+        optionsShown = false;
+    }
+    return origDropdownExit(self);
 }
 
 static int (*origLevelSettingsShow)(void*, void*);
 static int hookLevelSettingsShow(void* self, void* obj) {
-    showButtonsGroup("LevelSettings", true);
+    showGroup("LevelSettings", true);
     return origLevelSettingsShow(self, obj);
 }
 
 static int (*origLevelSettingsHide)(void*);
 static int hookLevelSettingsHide(void* self) {
-    showButtonsGroup("LevelSettings", false);
+    showGroup("LevelSettings", false);
     return origLevelSettingsHide(self);
 }
 
@@ -100,13 +106,13 @@ static void* colorPopup;
 static int (*origColorSettingsShow)(void*);
 static int hookColorSettingsShow(void* self) {
     colorPopup = self;
-    showButtonsGroup("Color", true);
+    showGroup("Color", true);
     return origColorSettingsShow(self);
 }
 
 static int (*origColorSettingsHide)(void*);
 static int hookColorSettingsHide(void* self) {
-    showButtonsGroup("Color", false);
+    showGroup("Color", false);
     return origColorSettingsHide(self);
 }
 
@@ -135,7 +141,7 @@ struct DoubleColor {
 static DoubleColor (*origColorSlider)(double, double, double);
 static DoubleColor hookColorSlider(double h, double s, double v) {
     DoubleColor color = origColorSlider(h, s, v);
-    if ((uintptr_t)__builtin_return_address(0) - handle->base != 0x2467BE)
+    if ((uintptr_t)__builtin_return_address(0) - base != COLOR_SLIDER_WHEEL_CALLER)
         callJavaFunction("ColorPicker", "setColor", "(III)V", (int)(color.r * 255), (int)(color.g * 255), (int)(color.b * 255));
     return color;
 }
@@ -143,11 +149,10 @@ static DoubleColor hookColorSlider(double h, double s, double v) {
 static void (*origColorSlider)(DoubleColor*, int, int, int, double, double);
 static void hookColorSlider(DoubleColor* out, int unused, int h1, int h2, double s, double v) {
     origColorSlider(out, unused, h1, h2, s, v);
+    if ((uintptr_t)__builtin_return_address(0) - base != COLOR_SLIDER_WHEEL_CALLER)
 #if defined(__APPLE__)
-    if ((uintptr_t)__builtin_return_address(0) - base != 0x25F3F)
         setColor((int)(out->r * 255), (int)(out->g * 255), (int)(out->b * 255));
 #else
-    if ((uintptr_t)__builtin_return_address(0) - handle->base != 0x1975B5)
         callJavaFunction("ColorPicker", "setColor", "(III)V", (int)(out->r * 255), (int)(out->g * 255), (int)(out->b * 255));
 #endif
 }
@@ -172,7 +177,7 @@ int getLevelLocalID(void* self) { return *(int*)((char*)self + 0x1E4); }
 void* currentLevelLayer = nullptr;
 void* currentLevel = nullptr;
 static bool levelMenuShown = false;
-static std::vector<std::pair<int, int>> copies;
+std::vector<std::pair<int, int>> copies;
 static int (*origLevelMenuShow)(void*, void*);
 static int hookLevelMenuShow(void* self, void* level) {
     currentLevelLayer = self;
@@ -189,7 +194,7 @@ static int hookLevelMenuShow(void* self, void* level) {
     callJavaFunction("OverlayUI", "setOriginalText", "(I)V", (jint)orig);
     callJavaFunction("RateMenu", "setStarsFeatured", "(IZ)V", (jint)getLevelStars(level), (jboolean)getLevelFeatured(level));
 #endif
-    showButtonsGroup("LevelMenu", true);
+    showGroup("LevelMenu", true);
     levelMenuShown = false;
     return origLevelMenuShow(self, level);
 }
@@ -247,30 +252,29 @@ static int hookMainLevelsShow(void* self, int var) {
     return origMainLevelsShow(self, var);
 }
 
-static int (*origTransitionScene)(float, void*, void*);
-static int hookTransitionScene(float var, void* scene1, void* scene2) {
+static void* (*origTransitionScene)(float, void*, Color*);
+static void* hookTransitionScene(float var, void* scene, Color* color) {
     if (currentLevelLayer) {
         if (levelMenuShown) {
-            showButtonsGroup("LevelMenu", false);
+            showGroup("LevelMenu", false);
+            showGroup("LevelInfo", false);
             currentLevelLayer = nullptr;
         } else levelMenuShown = true;
     }
-    return origTransitionScene(var, scene1, scene2);
+    return origTransitionScene(var, scene, color);
 }
 
-static void* (*gameManagerCreateLevel)(void* self);
-static void* (*createTransition)(float val, void* scene, Color* color);
 static void (*replaceScene)(void* self, void* transition);
-static void* (*dictCreateLevel)(void* self);
 static void (*CCArrayInsert)(void* self, void* obj, int pos);
 static void goToLevel(void* level) {
     void* director = getDirectorInstance();
     void* scene = hookLevelEditShow(level);
     Color color = {0, 0, 0};
-    void* transition = createTransition(0.5f, scene, &color);
+    void* transition = hookTransitionScene(0.5f, scene, &color);
     replaceScene(director, transition);
 }
 #if defined(__APPLE__)
+static void* (*gameManagerCreateLevel)(void* self);
 void cloneLevel() {
     void* gameManager = gameManagerGetInstance();
     *(int*)((char*)gameManager + 0x178) = 2;
@@ -329,7 +333,19 @@ static void hookLevelWriteXml(void* level, void* dict) {
 }
 
 static int (*dictGetIntForKey)(void* self, const char* key);
-static void (*dictGetStrForKey)(std::string** out, void* self, const char* key);
+#if defined(__i386__)
+static std::string (*dictGetStrForKey)(void* self, const char* key);
+static std::string dictGetStrForKeyHelper(void* dict, const char* key) {
+    std::string str = dictGetStrForKey(dict, key);
+#else
+static void (*dictGetStrForKey)(std::string* out, void* self, const char* key);
+static std::string dictGetStrForKeyHelper(void* dict, const char* key) {
+    std::string str;
+    dictGetStrForKey(&str, dict, key);
+#endif
+    if (str.empty()) new (&str) std::string();
+    return str;
+}
 static float (*dictGetFloatForKey)(void* self, const char* key);
 static void* (*origLevelReadXml)(int, void*);
 static void* hookLevelReadXml(int type, void* dict) {
@@ -337,19 +353,10 @@ static void* hookLevelReadXml(int type, void* dict) {
     if (type == 4) {
         int orig_level = dictGetIntForKey(dict, "k42");
         if (orig_level) copies.push_back(std::make_pair(getLevelLocalID(level), orig_level));
-#if defined(__i386__)
-        unsigned int songID = (unsigned int)dictGetIntForKey(dict, "k45");
-        char songIDstr[10];
-        snprintf(songIDstr, 50, "%u", songID);
-        if (songID) customSongs.push_back(std::make_pair(getLevelLocalID(level), std::string(songIDstr)));
-#else
-        std::string* songID;
-        dictGetStrForKey(&songID, dict, "k45");
-        if (*(uintptr_t**)songID) {
-            std::string* str = (std::string*)&songID;
-            if (*str != "") customSongs.push_back(std::make_pair(getLevelLocalID(level), *str));
-        }
-#endif
+
+        std::string songID = dictGetStrForKeyHelper(dict, "k45");
+        if (!songID.empty()) customSongs.push_back(std::make_pair(getLevelLocalID(level), songID));
+
         float offset = dictGetFloatForKey(dict, "k1337");
         if (offset) songOffsets.push_back(std::make_pair(getLevelLocalID(level), offset));
     }
@@ -384,13 +391,8 @@ void origHttpSetRequestData(void* self, const char* str, int len) {
 }
 static void (*origHttpSend)(void*, void*);
 static void hookHttpSend(void* self, void* request) {
-#if defined(__APPLE__)
-    if ((uintptr_t)__builtin_return_address(0) - base == 0x93EC9) {
-        auto data = (std::vector<char>*)((char*)request + 0x2C);
-#else
-    if ((uintptr_t)__builtin_return_address(0) - handle->base == 0x1D5A85) {
+    if ((uintptr_t)__builtin_return_address(0) - base == HTTP_UPLOAD_LVL_CALLER) {
         auto data = (std::vector<char>*)((char*)request + 0x20);
-#endif
         std::string newStr = changeHttpData(std::string(data->begin(), data->end()));
         const char* newCStr = newStr.c_str();
         data->assign(newCStr, newCStr + strlen(newCStr));
@@ -400,7 +402,7 @@ static void hookHttpSend(void* self, void* request) {
 #else
 void (*origHttpSetRequestData)(void*, const char*, int);
 static void hookHttpSetRequestData(void* self, const char* str, int len) {
-    if ((uintptr_t)__builtin_return_address(0) - handle->base == 0x163945) {
+    if ((uintptr_t)__builtin_return_address(0) - base == HTTP_UPLOAD_LVL_CALLER) {
         std::string newStr = changeHttpData(std::string(str));
         const char* newCStr = newStr.c_str();
         origHttpSetRequestData(self, newCStr, strlen(newCStr));
@@ -417,13 +419,7 @@ static float (*getFloatFromCCStr)(void* self);
 static void* (*origCreateLevelFromResponse)(void*);
 static void* hookCreateLevelFromResponse(void* dict) {
     void* level = origCreateLevelFromResponse(dict);
-#if defined(__APPLE__)
-    if ((uintptr_t)__builtin_return_address(0) - base != 0x8E309) {
-#elif defined(__i386__)
-    if ((uintptr_t)__builtin_return_address(0) - handle->base != 0x1CF97A) {
-#else
-    if ((uintptr_t)__builtin_return_address(0) - handle->base != 0x1608E7) {
-#endif
+    if ((uintptr_t)__builtin_return_address(0) - base != RESPONSE_CREATE_LVL_CELL_CALLER) {
         if (currentLevel && getLevelID(currentLevel) == getLevelID(level)) *(int*)((char*)level + 0x1E4) = getLevelLocalID(currentLevel);
         currentLevel = level;
         int localID = getLevelLocalID(level);
@@ -474,7 +470,7 @@ static void replaceSubStr(std::string* str, const char* fromC, const char* toC) 
 static const char* gmdConverts[] = {"<key>", "<k>", "</key>", "</k>", "<integer>", "<i>", "</integer>", "</i>", "<string>", "<s>", "</string>", "</s>",
     "<real>", "<r>", "</real>", "</r>", "<true />", "<t />", "<false />", "<f />"};
 
-static void importGmd(const char* pathC) {
+void importGmd(const char* pathC) {
     std::string path = std::string(pathC);
     queueOnCocosThread([path]() {
         FILE* f = fopen(path.c_str(), "r");
@@ -490,17 +486,37 @@ static void importGmd(const char* pathC) {
             char* dict = (char*)malloc(0xD4);
             dsDictCons(dict);
             dsStrToDict(dict, &data);
+
+            std::string k3 = dictGetStrForKeyHelper(dict, "k3");
+            std::string k4 = dictGetStrForKeyHelper(dict, "k4");
+            std::string k34 = dictGetStrForKeyHelper(dict, "k34");
+            if (strncmp(k4.c_str(), "H4sI", 4) == 0 || strncmp(k4.c_str(), "eJy", 3) == 0) {
+                std::string k4Decoded = base64Decode(k4.c_str());
+                std::string k4Decompressed = gzipDecompress(k4Decoded.c_str(), k4Decoded.size());
+                dictSetStrForKey(dict, "k4", &k4Decompressed);
+
+                std::string k3Decoded = base64Decode(k3.c_str());
+                dictSetStrForKey(dict, "k3", &k3Decoded);
+
+                std::string k34Decoded = base64Decode(k34.c_str());
+                std::string k34Decompressed = gzipDecompress(k34Decoded.c_str(), k34Decoded.size());
+                dictSetStrForKey(dict, "k34", &k34Decompressed);
+            }
+
             void* level = hookLevelReadXml(4, dict);
+            *(bool*)((char*)level + 0x15D) = false; // verified
+            *(int*)((char*)level + 0x164) = 7; // game version
             *(int*)((char*)level + 0x1E0) = 2; // type
             void* levelManager = levelManagerGetInstance();
             CCArrayInsert(*(void**)((char*)levelManager + 0x130), level, 0);
+            showGroup("Options", false);
             goToLevel(level);
             free(dict);
         }
     });
 }
 
-static void exportGmd(const char* pathC) {
+void exportGmd(const char* pathC) {
     std::string path = std::string(pathC);
     queueOnCocosThread([path]() {
         FILE* f = fopen(path.c_str(), "w");
@@ -524,8 +540,8 @@ static void exportGmd(const char* pathC) {
     });
 }
 
-static std::string* getCurrentLevelName() {
-    return (std::string*)((char*)currentLevel + 0x12C);
+const char* getCurrentLevelName() {
+    return ((std::string*)((char*)currentLevel + 0x12C))->c_str();
 }
 
 #if defined(__i386__)
@@ -533,9 +549,9 @@ static std::string (*getLevelStr)(void* self);
 static int getCurrentLevelLength() {
     getLevelStr(editorLayer);
 #else
-static void (*getLevelStr)(void** out, void* self);
-static int getCurrentLevelLength() {
-    void* str = nullptr;
+static void (*getLevelStr)(std::string* out, void* self);
+int getCurrentLevelLength() {
+    std::string str;
     getLevelStr(&str, editorLayer);
 #endif
     int distance = *(int*)((char*)editorLayer + 0x164);
@@ -559,7 +575,7 @@ Java_com_necytdamu_onesixgdps_OverlayUI_exportGmd(JNIEnv* env, jclass, jstring p
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_necytdamu_onesixgdps_OverlayUI_getCurrentLevelName(JNIEnv* env, jclass) {
-    return env->NewStringUTF(getCurrentLevelName()->c_str());
+    return env->NewStringUTF(getCurrentLevelName());
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -578,121 +594,151 @@ static void hookSaveGame(void* self) {
     }
 }
 
+static void* (*origParseLevelObj)(std::string);
+static void* hookParseLevelObj(std::string str) {
+    if (strncmp(str.c_str(), "1,", 2)) return nullptr;
+    std::string::size_type a = 2;
+    std::string::size_type b = str.find(',', a);
+    std::string second = str.substr(a, b - a);
+    b += 3;
+    std::string::size_type c = str.find(',', b);
+    std::string third = str.substr(b, c - b);
+    int id = atoi(second.c_str());
+    double x = strtod(third.c_str(), nullptr);
+    if (id > 199 || x < 0) return nullptr;
+    return origParseLevelObj(str);
+}
+
+static int (*origLevelInfoShow)(void*, void*);
+static int hookLevelInfoShow(void* self, void* level) {
+    showGroup("LevelMenu", false);
+    showGroup("LevelInfo", true);
+    return origLevelInfoShow(self, level);
+}
+
+static int (*origLevelInfoHide)(void*);
+static int hookLevelInfoHide(void* self) {
+    showGroup("LevelInfo", false);
+    showGroup("LevelMenu", true);
+    return origLevelInfoHide(self);
+}
+
 #if defined(__APPLE__)
 void iOSSetupNative() {
     base = _dyld_get_image_vmaddr_slide(0);
 
-    dictSetIntForKey = (void(*)(void*, const char*, int))((base + 0x115008) | 1);
-    dictGetIntForKey = (int(*)(void*, const char*))((base + 0x114BBC) | 1);
-    dictSetStrForKey = (void(*)(void*, const char*, std::string*))((base + 0x1155F0) | 1);
-    dictGetStrForKey = (void(*)(std::string**, void*, const char*))((base + 0x114DDC) | 1);
-    dictSetFloatForKey = (void(*)(void*, const char*, float))((base + 0x11536C) | 1);
-    dictGetFloatForKey = (float(*)(void*, const char*))((base + 0x114D14) | 1);
-    CCdictGetValue = (void*(*)(void*, std::string*))((base + 0x1C434) | 1);
-    getIntFromCCStr = (int(*)(void*))((base + 0x20EBC) | 1);
-    getStrFromCCStr = (const char*(*)(void*))((base + 0x20C60) | 1);
-    getFloatFromCCStr = (float(*)(void*))((base + 0x20ED4) | 1);
-    gameManagerCreateLevel = (void*(*)(void*))((base + 0x8D644) | 1);
-    createTransition = (void*(*)(float, void*, Color*))((base + 0x396E0) | 1);
-    replaceScene = (void(*)(void*, void*))((base + 0x17CD0) | 1);
-    managerSave = (void(*)(void*))((base + 0x1198D4) | 1);
+    dictSetIntForKey = (void(*)(void*, const char*, int))((base + DICT_SET_INT_ADDR) | 1);
+    dictGetIntForKey = (int(*)(void*, const char*))((base + DICT_GET_INT_ADDR) | 1);
+    dictSetStrForKey = (void(*)(void*, const char*, std::string*))((base + DICT_SET_STR_ADDR) | 1);
+    dictGetStrForKey = (void(*)(std::string*, void*, const char*))((base + DICT_GET_STR_ADDR) | 1);
+    dictSetFloatForKey = (void(*)(void*, const char*, float))((base + DICT_SET_FLOAT_ADDR) | 1);
+    dictGetFloatForKey = (float(*)(void*, const char*))((base + DICT_GET_FLOAT_ADDR) | 1);
+    CCdictGetValue = (void*(*)(void*, std::string*))((base + CCDICT_GET_VALUE_ADDR) | 1);
+    getIntFromCCStr = (int(*)(void*))((base + CCSTR_GET_INT_ADDR) | 1);
+    getStrFromCCStr = (const char*(*)(void*))((base + CCSTR_GET_STR_ADDR) | 1);
+    getFloatFromCCStr = (float(*)(void*))((base + CCSTR_GET_FLOAT_ADDR) | 1);
+    gameManagerCreateLevel = (void*(*)(void*))((base + CREATE_LVL_ADDR) | 1);
+    replaceScene = (void(*)(void*, void*))((base + REPLACE_SCENE_ADDR) | 1);
+    managerSave = (void(*)(void*))((base + SAVE_MANAGER_ADDR) | 1);
+    CCArrayInsert = (void(*)(void*, void*, int))((base + CCARRAY_INSERT_ADDR) | 1);
+    keyCreateSearchObj = (void*(*)(const char*))((base + CREATE_SEARCH_OBJ_ADDR) | 1);
+    levelBrowserScene = (void*(*)(void*))((base + LVL_BROWSER_SCENE_ADDR) | 1);
+    getLevelStr = (void(*)(std::string*, void*))((base + GET_LVL_STR_ADDR) | 1);
 
-    MSHookFunction((void*)((base + 0x26AE0) | 1), (void*)hookOptionsShow, (void**)&origOptionsShow);
-    MSHookFunction((void*)((base + 0x26BC4) | 1), (void*)hookOptionsHide, (void**)&origOptionsHide);
-    MSHookFunction((void*)((base + 0xBBDB8) | 1), (void*)hookLevelSettingsShow, (void**)&origLevelSettingsShow);
-    MSHookFunction((void*)((base + 0xBBB68) | 1), (void*)hookLevelSettingsHide, (void**)&origLevelSettingsHide);
-    MSHookFunction((void*)((base + 0x23ED8) | 1), (void*)hookColorSettingsShow, (void**)&origColorSettingsShow);
-    MSHookFunction((void*)((base + 0x24774) | 1), (void*)hookColorSettingsHide, (void**)&origColorSettingsHide);
-    MSHookFunction((void*)((base + 0x24670) | 1), (void*)hookColorSet, (void**)&origColorSet);
-    MSHookFunction((void*)((base + 0x28658) | 1), (void*)hookColorSlider, (void**)&origColorSlider);
-    MSHookFunction((void*)((base + 0xBD750) | 1), (void*)hookLevelMenuShow, (void**)&origLevelMenuShow);
-    MSHookFunction((void*)((base + 0x7C2C0) | 1), (void*)hookLevelEditShow, (void**)&origLevelEditShow);
-    MSHookFunction((void*)((base + 0xC7A0C) | 1), (void*)hookMainLevelsShow, (void**)&origMainLevelsShow);
-    MSHookFunction((void*)((base + 0x9E6BC) | 1), (void*)hookLevelWriteXml, (void**)&origLevelWriteXml);
-    MSHookFunction((void*)((base + 0xD3A4C) | 1), (void*)hookLevelReadXml, (void**)&origLevelReadXml);
-    MSHookFunction((void*)((base + 0x2E25C) | 1), (void*)hookHttpSend, (void**)&origHttpSend);
-    MSHookFunction((void*)((base + 0x8E76C) | 1), (void*)hookCreateLevelFromResponse, (void**)&origCreateLevelFromResponse);
-    MSHookFunction((void*)((base + 0x396E0) | 1), (void*)hookTransitionScene, (void**)&origTransitionScene);
+    MSHookFunction((void*)((base + SHOW_OPTIONS_ADDR) | 1), (void*)hookOptionsShow, (void**)&origOptionsShow);
+    MSHookFunction((void*)((base + EXIT_DROPDOWN_ADDR) | 1), (void*)hookDropdownExit, (void**)&origDropdownExit);
+    MSHookFunction((void*)((base + SHOW_LVL_SETS_ADDR) | 1), (void*)hookLevelSettingsShow, (void**)&origLevelSettingsShow);
+    MSHookFunction((void*)((base + HIDE_LVL_SETS_ADDR) | 1), (void*)hookLevelSettingsHide, (void**)&origLevelSettingsHide);
+    MSHookFunction((void*)((base + SHOW_COLOR_SETS_ADDR) | 1), (void*)hookColorSettingsShow, (void**)&origColorSettingsShow);
+    MSHookFunction((void*)((base + HIDE_COLOR_SETS_ADDR) | 1), (void*)hookColorSettingsHide, (void**)&origColorSettingsHide);
+    MSHookFunction((void*)((base + SET_COLOR_ADDR) | 1), (void*)hookColorSet, (void**)&origColorSet);
+    MSHookFunction((void*)((base + COLOR_SLIDER_ADDR) | 1), (void*)hookColorSlider, (void**)&origColorSlider);
+    MSHookFunction((void*)((base + SHOW_CUSTOM_LVL_ADDR) | 1), (void*)hookLevelMenuShow, (void**)&origLevelMenuShow);
+    MSHookFunction((void*)((base + SHOW_EDIT_LVL_ADDR) | 1), (void*)hookLevelEditShow, (void**)&origLevelEditShow);
+    MSHookFunction((void*)((base + SHOW_MAIN_LVLS_ADDR) | 1), (void*)hookMainLevelsShow, (void**)&origMainLevelsShow);
+    MSHookFunction((void*)((base + WRITE_LVL_XML_ADDR) | 1), (void*)hookLevelWriteXml, (void**)&origLevelWriteXml);
+    MSHookFunction((void*)((base + READ_LVL_XML_ADDR) | 1), (void*)hookLevelReadXml, (void**)&origLevelReadXml);
+    MSHookFunction((void*)((base + HTTP_SEND_ADDR) | 1), (void*)hookHttpSend, (void**)&origHttpSend);
+    MSHookFunction((void*)((base + RESPONSE_CREATE_LVL_ADDR) | 1), (void*)hookCreateLevelFromResponse, (void**)&origCreateLevelFromResponse);
+    MSHookFunction((void*)((base + TRANSITION_SCENE_ADDR) | 1), (void*)hookTransitionScene, (void**)&origTransitionScene);
+    MSHookFunction((void*)((base + SEARCH_SCENE_ADDR) | 1), (void*)hookSearchScene, (void**)&origSearchScene);
+    MSHookFunction((void*)((base + SHOW_EDITOR_ADDR) | 1), (void*)hookEditorShow, (void**)&origEditorShow);
+    MSHookFunction((void*)((base + SAVE_GAME_ADDR) | 1), (void*)hookSaveGame, (void**)&origSaveGame);
+    MSHookFunction((void*)((base + PARSE_LVL_OBJ_ADDR) | 1), (void*)hookParseLevelObj, (void**)&origParseLevelObj);
+    MSHookFunction((void*)((base + SHOW_LVL_INFO_ADDR) | 1), (void*)hookLevelInfoShow, (void**)&origLevelInfoShow);
+    MSHookFunction((void*)((base + HIDE_LVL_INFO_ADDR) | 1), (void*)hookLevelInfoHide, (void**)&origLevelInfoHide);
 
     networkcpp_init();
     percentagecpp_init();
     songscpp_init();
     utilscpp_init();
 
-    //const char* path = "/data/data/com.necytdamu.onesixgdps/";
-    const char* server = "http://gdpsnazarva.7m.pl";
-
     uint32_t patchNewBlock = 0x4F80F5B0;
-    mprotectPatch(0x85EDA, &patchNewBlock, 4, true);
-    mprotectPatch(0x86812, &patchNewBlock, 4, true);
+    mprotectPatch(OBJ_LIMIT_ADDR_1, &patchNewBlock, 4, true);
+    mprotectPatch(OBJ_LIMIT_ADDR_2, &patchNewBlock, 4, true);
     uint32_t patchMaxError = 0x0100F244;
-    mprotectPatch(0x875BA, &patchMaxError, 4, true);
+    mprotectPatch(OBJ_LIMIT_ADDR_3, &patchMaxError, 4, true);
     uint32_t patchPause = 0x0200F244;
-    mprotectPatch(0x8050A, &patchPause, 4, true);
-    //mprotectPatch(0x450DB8, (void*)path, strlen(path), false);
+    mprotectPatch(OBJ_LIMIT_ADDR_4, &patchPause, 4, true);
 
     float patchLimit = __FLT_MAX__ / 30.0f;
-    mprotectPatch(0xBAF38, &patchLimit, 4, false);
-    mprotectPatch(0x8A3A8, &patchLimit, 4, false);
-    mprotectPatch(0x87BAC, &patchLimit, 4, false);
-    mprotectPatch(0x85E40, &patchLimit, 4, false);
+    mprotectPatch(LVL_LIMIT_ADDR_1, &patchLimit, 4, false);
+    mprotectPatch(LVL_LIMIT_ADDR_2, &patchLimit, 4, false);
+    mprotectPatch(LVL_LIMIT_ADDR_3, &patchLimit, 4, false);
+    mprotectPatch(LVL_LIMIT_ADDR_4, &patchLimit, 4, false);
 
+#if defined(__ARM_ARCH_7S__)
+    const uintptr_t serverAddrs[] = {0x262842, 0x262938, 0x2629AD, 0x2629FB, 0x262A4D, 0x262ACB, 0x262B23, 0x262B85, 0x262C43, 0x262C75, 0x262CC3, 0x262D48, 0x262E3E, 0x262E9E};
+#else
     const uintptr_t serverAddrs[] = {0x262832, 0x262928, 0x26299D, 0x2629EB, 0x262A3D, 0x262ABB, 0x262B13, 0x262B75, 0x262C33, 0x262C65, 0x262CB3, 0x262D38, 0x262E2E, 0x262E8E};
+#endif
+    const char* server = "http://gdpsnazarva.7m.pl";
     for (int i = 0; i < 14; i++) mprotectPatch(serverAddrs[i], (void*)server, strlen(server), false);
 }
 #else
 extern "C" JNIEXPORT jint JNICALL
 JNI_OnLoad(JavaVM* vm, void* reserved) {
-    handle = (soinfo2*)dlopen("libgame.so", RTLD_LAZY);
+    handle = dlopen("libgame.so", RTLD_LAZY);
+    base = *(uintptr_t*)((char*)handle + 140);
     jvm = vm;
 
     cloneLevel = (void(*)(void*))(dlsym(handle, "_ZN14LevelInfoLayer7onCloneEv"));
     dictSetIntForKey = (void(*)(void*, const char*, int))(dlsym(handle, "_ZN13DS_Dictionary16setIntegerForKeyEPKci"));
     dictGetIntForKey = (int(*)(void*, const char*))(dlsym(handle, "_ZN13DS_Dictionary16getIntegerForKeyEPKc"));
     dictSetStrForKey = (void(*)(void*, const char*, std::string*))(dlsym(handle, "_ZN13DS_Dictionary15setStringForKeyEPKcRKSs"));
-    dictGetStrForKey = (void(*)(std::string**, void*, const char*))(dlsym(handle, "_ZN13DS_Dictionary15getStringForKeyEPKc"));
     dictSetFloatForKey = (void(*)(void*, const char*, float))(dlsym(handle, "_ZN13DS_Dictionary14setFloatForKeyEPKcf"));
     dictGetFloatForKey = (float(*)(void*, const char*))(dlsym(handle, "_ZN13DS_Dictionary14getFloatForKeyEPKc"));
     CCdictGetValue = (void*(*)(void*, std::string*))(dlsym(handle, "_ZN7cocos2d12CCDictionary11valueForKeyERKSs"));
     getIntFromCCStr = (int(*)(void*))(dlsym(handle, "_ZNK7cocos2d8CCString8intValueEv"));
     getStrFromCCStr = (const char*(*)(void*))(dlsym(handle, "_ZNK7cocos2d8CCString10getCStringEv"));
     getFloatFromCCStr = (float(*)(void*))(dlsym(handle, "_ZNK7cocos2d8CCString10floatValueEv"));
-    gameManagerCreateLevel = (void*(*)(void*))(dlsym(handle, "_ZN16GameLevelManager14createNewLevelEv"));
-    createTransition = (void*(*)(float, void*, Color*))(dlsym(handle, "_ZN7cocos2d16CCTransitionFade6createEfPNS_7CCSceneERKNS_10_ccColor3BE"));
     replaceScene = (void(*)(void*, void*))(dlsym(handle, "_ZN7cocos2d10CCDirector12replaceSceneEPNS_7CCSceneE"));
-    dictCreateLevel = (void*(*)(void*))(dlsym(handle, "_ZN11GJGameLevel15createWithCoderEP13DS_Dictionary"));
+    managerSave = (void(*)(void*))(dlsym(handle, "_ZN8GManager4saveEv"));
     CCArrayInsert = (void(*)(void*, void*, int))(dlsym(handle, "_ZN7cocos2d7CCArray12insertObjectEPNS_8CCObjectEj"));
     keyCreateSearchObj = (void*(*)(const char*))(dlsym(handle, "_ZN14GJSearchObject13createFromKeyEPKc"));
     levelBrowserScene = (void*(*)(void*))(dlsym(handle, "_ZN17LevelBrowserLayer5sceneEP14GJSearchObject"));
-    managerSave = (void(*)(void*))(dlsym(handle, "_ZN8GManager4saveEv"));
 #if defined(__i386__)
+    dictGetStrForKey = (std::string(*)(void*, const char*))(dlsym(handle, "_ZN13DS_Dictionary15getStringForKeyEPKc"));
     getLevelStr = (std::string(*)(void*))(dlsym(handle, "_ZN16LevelEditorLayer14getLevelStringEv"));
 #else
-    getLevelStr = (void(*)(void**, void*))(dlsym(handle, "_ZN16LevelEditorLayer14getLevelStringEv"));
+    dictGetStrForKey = (void(*)(std::string*, void*, const char*))(dlsym(handle, "_ZN13DS_Dictionary15getStringForKeyEPKc"));
+    getLevelStr = (void(*)(std::string*, void*))(dlsym(handle, "_ZN16LevelEditorLayer14getLevelStringEv"));
 #endif
 
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN12OptionsLayer6createEv") | THUMB_BIT),
                   (void*)hookOptionsShow, (void**)&origOptionsShow);
 
-    ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN12OptionsLayerD2Ev") | THUMB_BIT),
-                  (void*)hookOptionsHide, (void**)&origOptionsHide);
+    ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN15GJDropDownLayer9exitLayerEv") | THUMB_BIT),
+                  (void*)hookDropdownExit, (void**)&origDropdownExit);
 
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN18LevelSettingsLayer4initEP19LevelSettingsObject") | THUMB_BIT),
                   (void*)hookLevelSettingsShow, (void**)&origLevelSettingsShow);
 
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN18LevelSettingsLayerD2Ev") | THUMB_BIT),
                   (void*)hookLevelSettingsHide, (void**)&origLevelSettingsHide);
-#if defined(__i386__)
-    ZzHookReplace((void*)((handle->base + 0x2458C0) | THUMB_BIT),
-                  (void*)hookColorSettingsShow, (void**)&origColorSettingsShow);
-    ZzHookReplace((void*)((handle->base + 0x244F80) | THUMB_BIT),
-                  (void*)hookColorSettingsHide, (void**)&origColorSettingsHide);
-#else
-    ZzHookReplace((void*)((handle->base + 0x196D58) | THUMB_BIT),
-                  (void*)hookColorSettingsShow, (void**)&origColorSettingsShow);
-    ZzHookReplace((void*)((handle->base + 0x1969EC) | THUMB_BIT),
-                  (void*)hookColorSettingsHide, (void**)&origColorSettingsHide);
-#endif
+
+    ZzHookReplace((void*)((base + SHOW_COLOR_SETS_ADDR) | THUMB_BIT), (void*)hookColorSettingsShow, (void**)&origColorSettingsShow);
+    ZzHookReplace((void*)((base + HIDE_COLOR_SETS_ADDR) | THUMB_BIT), (void*)hookColorSettingsHide, (void**)&origColorSettingsHide);
 
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN7cocos2d9extension21CCControlColourPicker13setColorValueERKNS_10_ccColor3BE") | THUMB_BIT),
                   (void*)hookColorSet, (void**)&origColorSet);
@@ -718,8 +764,7 @@ JNI_OnLoad(JavaVM* vm, void* reserved) {
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN7cocos2d9extension12CCHttpClient4sendEPNS0_13CCHttpRequestE") | THUMB_BIT),
                   (void*)hookHttpSend, (void**)&origHttpSend);
 #else
-    ZzHookReplace((void*)((handle->base + 0x16247C) | THUMB_BIT),
-                  (void*)hookHttpSetRequestData, (void**)&origHttpSetRequestData);
+    ZzHookReplace((void*)((base + 0x16247C) | THUMB_BIT), (void*)hookHttpSetRequestData, (void**)&origHttpSetRequestData);
 #endif
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN11GJGameLevel6createEPN7cocos2d12CCDictionaryE") | THUMB_BIT),
                   (void*)hookCreateLevelFromResponse, (void**)&origCreateLevelFromResponse);
@@ -735,6 +780,15 @@ JNI_OnLoad(JavaVM* vm, void* reserved) {
 
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN11AppDelegate11trySaveGameEv") | THUMB_BIT),
                   (void*)hookSaveGame, (void**)&origSaveGame);
+
+    ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN10GameObject16objectFromStringESs") | THUMB_BIT),
+                  (void*)hookParseLevelObj, (void**)&origParseLevelObj);
+
+    ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN9InfoLayer4initEP11GJGameLevel") | THUMB_BIT),
+                  (void*)hookLevelInfoShow, (void**)&origLevelInfoShow);
+
+    ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN9InfoLayer7onCloseEv") | THUMB_BIT),
+                  (void*)hookLevelInfoHide, (void**)&origLevelInfoHide);
 
     networkcpp_init();
     percentagecpp_init();

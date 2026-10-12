@@ -33,29 +33,24 @@ static int hookPlayBackMusic(void* self, const char* song, bool flag) { return o
 static int (*origPreloadMusic)(void*, const char*);
 static int hookPreloadMusic(void* self, const char* song) { return origPreloadMusic(self, getReplacedSong(song).c_str()); }
 #else
+static void (*stopBackMusic)();
 static int (*origPlayBackMusic)(const char*, bool);
 static int hookPlayBackMusic(const char* song, bool flag) { return origPlayBackMusic(getReplacedSong(song).c_str(), flag); }
 static int (*origPreloadMusic)(const char*);
-static int hookPreloadMusic(const char* song) { return origPreloadMusic(getReplacedSong(song).c_str()); }
+static int hookPreloadMusic(const char* song) {
+    int res = origPreloadMusic(getReplacedSong(song).c_str());
+    hookPlayBackMusic(song, false);
+    stopBackMusic();
+}
 #endif
 
 static void* levelCell;
 static const char* hookGetAudioTitle(int num) {
     int id = 0;
-#if defined(__APPLE__)
     uintptr_t caller = (uintptr_t)__builtin_return_address(0) - base;
-    if (caller == 0x75ABD) id = getLevelLocalID(levelCell);
-    else if (caller == 0x7E947) id = getLevelLocalID(currentLevel);
-#else
-    uintptr_t caller = (uintptr_t)__builtin_return_address(0) - handle->base;
-#if defined(__i386__)
-    if (caller == 0x189FE6) id = getLevelLocalID(levelCell);
-    else if (caller == 0x1BDF6F) id = getLevelLocalID(currentLevel);
-#else
-    if (caller == 0x140DB3) id = getLevelLocalID(levelCell);
-    else if (caller == 0x15A533) id = getLevelLocalID(currentLevel);
-#endif
-#endif
+    if (caller == SONGNAME_EDIT_LVL_CELL_CALLER) id = getLevelLocalID(levelCell);
+    else if (caller == SONGNAME_EDIT_LVL_CALLER) id = getLevelLocalID(currentLevel);
+
     if (id) for (int i = 0; i < customSongs.size(); i++) if (customSongs[i].first == id) {
         if (customSongs[i].second != "") return "Custom";
         break;
@@ -231,18 +226,20 @@ Java_com_necytdamu_onesixgdps_SongsDialog_playLevel(JNIEnv* env, jclass) {
 
 void songscpp_init() {
 #if defined(__APPLE__)
-    stopBackMusic = (void(*)())((base + 0x6786C) | 1);
-    MSHookFunction((void*)((base + 0x67810) | 1), (void*)hookPlayBackMusic, (void**)&origPlayBackMusic);
-    MSHookFunction((void*)((base + 0x677B8) | 1), (void*)hookPreloadMusic, (void**)&origPreloadMusic);
-    MSHookFunction((void*)((base + 0xCDA2C) | 1), (void*)hookGetAudioTitle, nullptr);
-    MSHookFunction((void*)((base + 0x6F7FC) | 1), (void*)hookLoadCellFromLevel, (void**)&origLoadCellFromLevel);
-    MSHookFunction((void*)((base + 0x6793C) | 1), (void*)hookSongSetOffset, (void**)&origSongSetOffset);
-    MSHookFunction((void*)((base + 0x7E310) | 1), (void*)hookEditLevelOnPlay, (void**)&origEditLevelOnPlay);
-    MSHookFunction((void*)((base + 0xBF21C) | 1), (void*)hookCustomLevelOnPlay, (void**)&origCustomLevelOnPlay);
+    stopBackMusic = (void(*)())((base + STOP_SONG_ADDR) | 1);
+    MSHookFunction((void*)((base + PLAY_SONG_ADDR) | 1), (void*)hookPlayBackMusic, (void**)&origPlayBackMusic);
+    MSHookFunction((void*)((base + PRELOAD_SONG_ADDR) | 1), (void*)hookPreloadMusic, (void**)&origPreloadMusic);
+    MSHookFunction((void*)((base + SONG_TITLE_ADDR) | 1), (void*)hookGetAudioTitle, nullptr);
+    MSHookFunction((void*)((base + CELL_FROM_LEVEL_ADDR) | 1), (void*)hookLoadCellFromLevel, (void**)&origLoadCellFromLevel);
+    MSHookFunction((void*)((base + SONG_OFFSET_ADDR) | 1), (void*)hookSongSetOffset, (void**)&origSongSetOffset);
+    MSHookFunction((void*)((base + EDIT_LVL_PLAY_ADDR) | 1), (void*)hookEditLevelOnPlay, (void**)&origEditLevelOnPlay);
+    MSHookFunction((void*)((base + CUSTOM_LVL_PLAY_ADDR) | 1), (void*)hookCustomLevelOnPlay, (void**)&origCustomLevelOnPlay);
 
     uint16_t patch = 0xBF00;
-    mprotectPatch(0xE38DE, &patch, 2, true);
+    mprotectPatch(SKIP_SONG_OFFSET_ADDR, &patch, 2, true);
 #else
+    stopBackMusic = (void(*)())(dlsym(handle, "pauseBackgroundMusicJNI"));
+
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "playBackgroundMusicJNI") | THUMB_BIT),
                   (void*)hookPlayBackMusic, (void**)&origPlayBackMusic);
 
@@ -264,18 +261,23 @@ void songscpp_init() {
 #if defined(__i386__)
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN14LevelInfoLayer6onPlayEv") | THUMB_BIT),
                   (void*)hookCustomLevelOnPlay, (void**)&origCustomLevelOnPlay);
+
+    uint64_t patch = 0x909090909090;
+    mprotectPatch(0x178F14, &patch, 6, true);
+
+    uint16_t patchEasyPause = 0xE990;
+    mprotectPatch(0x1777B4, &patchEasyPause, 2, true);
 #else
     origCustomLevelOnPlay = (void(*)(void*))(dlsym(handle, "_ZN14LevelInfoLayer6onPlayEv"));
     void* hookAddr = (void*)hookCustomLevelOnPlay;
     mprotectPatch(0x46CC4C, &hookAddr, 4, true);
-#endif
 
-#if defined(__i386__)
-    uint64_t patch = 0x909090909090;
-    mprotectPatch(0x178F14, &patch, 6, true);
-#else
     uint16_t patch = 0xBF00;
     mprotectPatch(0x13991C, &patch, 2, true);
+
+    uint16_t patchEasyPause = 0xE032;
+    mprotectPatch(0x138B4E, &patchEasyPause, 2, true);
 #endif
+
 #endif
 }

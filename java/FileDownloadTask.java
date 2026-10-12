@@ -12,6 +12,7 @@ import android.widget.LinearLayout;
 import android.widget.TableLayout;
 
 import java.io.File;
+import java.io.RandomAccessFile;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -20,6 +21,7 @@ import java.net.URL;
 import java.util.concurrent.TimeUnit;
 
 import com.squareup.okhttp.OkHttpClient;
+import com.mpatric.mp3agic.Mp3File;
 
 // ai-generated code
 
@@ -167,6 +169,33 @@ public class FileDownloadTask extends AsyncTask<String, Integer, Boolean> {
         }
 
         if (success) {
+            try {
+                Mp3File mp3 = new Mp3File(destination.getPath());
+                int xing  = mp3.getXingOffset();
+                int start = mp3.getStartOffset();
+
+                if (xing >= 0 && !mp3.isVbr() && start > xing) {
+                    RandomAccessFile raf = new RandomAccessFile(destination, "rw");
+                    try {
+                        long len = raf.length();
+                        byte[] buf = new byte[32 * 1024];
+                        long r = start, w = xing;
+                        while (r < len) {
+                            raf.seek(r);
+                            int n = raf.read(buf, 0, (int) Math.min(buf.length, len - r));
+                            if (n < 0) break;
+                            raf.seek(w);
+                            raf.write(buf, 0, n);
+                            r += n;
+                            w += n;
+                        }
+                        raf.setLength(w);
+                    } finally {
+                        raf.close();
+                    }
+                }
+            } catch (Exception ignored) {}
+
             destination.setReadable(true, false);
             if (table != null) SongsDialog.songsTableAddRow(table, destination, true, levelSettings);
             else SongsDialog.playLevel();
