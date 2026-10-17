@@ -9,7 +9,7 @@ This modification, supporting Android 2.2+ and jailbroken iOS 4.3-10.3.3, provid
 - Setting a song offset for your level
 - RGB color picker in the editor
 - Removed the border at 1000 blocks in the editor
-- Exporting and importing gmd files
+- Exporting and importing gdlvl and gmd files
 - Level length is shown in level settings
 
 ## Screenshots

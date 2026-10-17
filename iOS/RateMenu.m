@@ -22,7 +22,6 @@ void buildRateDialog() {
                 0, toggleSize, toggleSize) radio:YES radioGroup:radioGroup];
             radioButton.tag = i;
             if (i == stars) radioButton.selected = YES;
-            [radioGroup addButton:radioButton];
             [layout addSubview:radioButton];
         }
 

@@ -67,11 +67,7 @@ public class AuthDialog {
         builder.setView(layout);
 
         builder.setPositiveButton("Submit", null);
-        builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-            public void onClick(DialogInterface dialog, int which) {
-                dialog.dismiss();
-            }
-        });
+        builder.setNegativeButton("Cancel", null);
         builder.setCancelable(true);
 
         authDialog = builder.create();
@@ -81,8 +77,8 @@ public class AuthDialog {
                 authDialog = null;
             }
         });
-        if (waiting) authDialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
         authDialog.show();
+        if (waiting) authDialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
 
         authDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(new View.OnClickListener() {
             @Override

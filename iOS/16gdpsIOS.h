@@ -96,8 +96,6 @@ extern const CGFloat spacing;
 // -------------------
 @interface RadioGroup : NSObject { NSMutableArray* buttons; }
 - (id)init;
-- (void)addButton:(ToggleView*)button;
-- (void)unselectAll;
 - (ToggleView*)getSelected;
 @end
 // -------------------
@@ -106,7 +104,9 @@ extern const CGFloat spacing;
     RadioGroup* radioGroup;
 }
 @property (nonatomic, retain) NSString* data;
+@property (nonatomic, copy) void (^action)(void);
 - (id)initWithFrame:(CGRect)frame radio:(BOOL)radioArg radioGroup:(RadioGroup*)radioGroupArg;
+- (void)toggle;
 @end
 // -------------------
 UIButton* MakeButton(NSString* title, void (^action)(void));
@@ -120,7 +120,7 @@ UILabel* MakeLabel(NSString* text);
 @end
 
 // FileBrowser.m
-extern void showFileBrowser(NSString* extension, BOOL dirMode, void (^callback)(NSString* path));
+extern void showFileBrowser(NSString* title, NSString* extension, BOOL dirMode, void (^callback)(NSString* path));
 
 // FileDownloadTask.m
 @interface FileDownloadTask : NSObject

@@ -285,7 +285,6 @@ static void findSongID(NSString* songId, SongsTable* table, BOOL levelSettings) 
                     radio:YES radioGroup:radioGroup];
                 button.data = [version objectForKey:@"url"];
                 if (i == 0) button.selected = YES;
-                [radioGroup addButton:button];
                 [layout addSubview:button];
 
                 UILabel* label = MakeLabel(info);
@@ -294,10 +293,7 @@ static void findSongID(NSString* songId, SongsTable* table, BOOL levelSettings) 
 
                 NSRange kbps = [info rangeOfString:@"Kbps"];
                 if (i > 0 && kbps.location != NSNotFound && [[[info substringToIndex:kbps.location] stringByTrimmingCharactersInSet:
-                    [NSCharacterSet whitespaceCharacterSet]] intValue] >= 128) {
-                        [radioGroup unselectAll];
-                        button.selected = YES;
-                }
+                    [NSCharacterSet whitespaceCharacterSet]] intValue] >= 128) [button toggle];
             }
 
             Dialog* dialog = [[Dialog alloc] init:dlgTitle layout:layout];
@@ -570,7 +566,7 @@ void buildSongsDialog(BOOL levelSettings) {
     [layout addSubview:pathScroll];
 
     UIButton* usePathBtn = MakeButton(@"...", ^{
-        showFileBrowser(@"mp3", YES, ^(NSString* dir) {
+        showFileBrowser(@"Select a folder", @"mp3", YES, ^(NSString* dir) {
             updateSongsPath(dir, false, levelSettings);
             setPathText(pathScroll, inputPathText, songsDir);
             songsTablePopulate(table, levelSettings);
@@ -597,8 +593,10 @@ void buildSongsDialog(BOOL levelSettings) {
 
     UIButton* findIDBtn = MakeButton(@"Find", ^{
         [idInput resignFirstResponder];
-        buildLoadingDialog(nil);
-        findSongID(idInput.text, table, levelSettings);
+        if (idInput.text.length) {
+            buildLoadingDialog(nil);
+            findSongID(idInput.text, table, levelSettings);
+        }
     });
     [layout addSubview:findIDBtn];
 

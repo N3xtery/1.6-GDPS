@@ -33,14 +33,14 @@ static int hookPlayBackMusic(void* self, const char* song, bool flag) { return o
 static int (*origPreloadMusic)(void*, const char*);
 static int hookPreloadMusic(void* self, const char* song) { return origPreloadMusic(self, getReplacedSong(song).c_str()); }
 #else
-static void (*stopBackMusic)();
+static void (*pauseBackMusic)();
 static int (*origPlayBackMusic)(const char*, bool);
 static int hookPlayBackMusic(const char* song, bool flag) { return origPlayBackMusic(getReplacedSong(song).c_str(), flag); }
 static int (*origPreloadMusic)(const char*);
 static int hookPreloadMusic(const char* song) {
     int res = origPreloadMusic(getReplacedSong(song).c_str());
     hookPlayBackMusic(song, false);
-    stopBackMusic();
+    pauseBackMusic();
 }
 #endif
 
@@ -238,7 +238,7 @@ void songscpp_init() {
     uint16_t patch = 0xBF00;
     mprotectPatch(SKIP_SONG_OFFSET_ADDR, &patch, 2, true);
 #else
-    stopBackMusic = (void(*)())(dlsym(handle, "pauseBackgroundMusicJNI"));
+    pauseBackMusic = (void(*)())(dlsym(handle, "pauseBackgroundMusicJNI"));
 
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "playBackgroundMusicJNI") | THUMB_BIT),
                   (void*)hookPlayBackMusic, (void**)&origPlayBackMusic);

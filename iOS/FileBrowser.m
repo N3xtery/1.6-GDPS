@@ -24,6 +24,7 @@ static void fbNavigate(NSString* dir) {
             [fm fileExistsAtPath:[dir stringByAppendingPathComponent:name] isDirectory:&isDir];
             if (isDir) [names addObject:[name stringByAppendingString:@"/"]];
             else if ([[name pathExtension] isEqualToString:fbExt]) [files addObject:name];
+            else if ([fbExt isEqualToString:@"gdlvl"] && [[name pathExtension] isEqualToString:@"gmd"]) [files addObject:name];
         }
         [names addObjectsFromArray:files];
 
@@ -88,7 +89,7 @@ static void fbNavigate(NSString* dir) {
 }
 @end
 
-void showFileBrowser(NSString* extension, BOOL dirMode, void (^callback)(NSString* path)) {
+void showFileBrowser(NSString* title, NSString* extension, BOOL dirMode, void (^callback)(NSString* path)) {
     fbExt = extension;
     fbDirMode = dirMode;
     fbCallback = [callback copy];
@@ -119,7 +120,7 @@ void showFileBrowser(NSString* extension, BOOL dirMode, void (^callback)(NSStrin
     fbTable.tableFooterView = [[UIView alloc] initWithFrame:CGRectZero];
     [layout addSubview:fbTable];
 
-    fbDialog = [[Dialog alloc] init:(dirMode ? @"Select a folder" : @"Select a file") layout:layout];
+    fbDialog = [[Dialog alloc] init:title layout:layout];
     if (dirMode) {
         [fbDialog setButton:0 title:@"OK" handler:^{
             if (fbReadable) fbCallback(fbCurrent);

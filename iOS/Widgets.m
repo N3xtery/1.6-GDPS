@@ -141,12 +141,14 @@ static char kButtonActionKey;
 
 @implementation ToggleView
 
-@synthesize data;
+@synthesize data, action;
 
 - (id)initWithFrame:(CGRect)frame radio:(BOOL)radioArg radioGroup:(RadioGroup*)radioGroupArg {
     self = [super initWithFrame:frame];
     radio = radioArg;
+    action = nil;
     radioGroup = radioGroupArg;
+    [radioGroup addButton:self];
     self.backgroundColor = [UIColor clearColor];
     self.opaque = NO;
     [self addTarget:self action:@selector(toggle) forControlEvents:UIControlEventTouchUpInside];
@@ -159,6 +161,7 @@ static char kButtonActionKey;
         [radioGroup unselectAll];
     }
     self.selected = !self.selected;
+    if (action) action();
     [self sendActionsForControlEvents:UIControlEventValueChanged];
 }
 

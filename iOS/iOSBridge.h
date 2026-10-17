@@ -8,7 +8,7 @@ extern void setColorNative(int r, int g, int b);
 extern void buildLoadingDialog(const char* id);
 extern void showMessageBox(const char* title, const char* msg);
 extern void importGmd(const char* pathC);
-extern void exportGmd(const char* pathC);
+extern void exportGmd(const char* pathC, bool gmd);
 extern const char* getCurrentLevelName();
 extern int getCurrentLevelLength();
 

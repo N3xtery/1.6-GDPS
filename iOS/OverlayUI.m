@@ -197,8 +197,8 @@ void iOSBuildOverlay() {
         saveBtn = MakeButton(@"Save", ^{ showConfirmation(@"Are you sure you want to save your data?"); });
         loadBtn = MakeButton(@"Load", ^{ showConfirmation(@"Are you sure you want to load your data?"); });
         logoutBtn = MakeButton(@"Log out", ^{ showConfirmation(@"Are you sure you want to log out?"); });
-        gmdImportBtn = MakeButton(@".gmd", ^{
-            showFileBrowser(@"gmd", NO, ^(NSString* file) {
+        gmdImportBtn = MakeButton(@".gdlvl", ^{
+            showFileBrowser(@"Import .gdlvl or .gmd", @"gdlvl", NO, ^(NSString* file) {
                 importGmd(CSTR(file));
             });
         });
@@ -257,21 +257,50 @@ void iOSBuildOverlay() {
         });
         customSongBtn = MakeButton(@"Custom song", ^{ buildSongsDialog(YES); });
         colorBtn = MakeButton(@"RGB", ^{ buildColorDialog(); });
-        gmdExportBtn = MakeButton(@".gmd", ^{
+        gmdExportBtn = MakeButton(@".gdlvl", ^{
             CGFloat width = 240.0f;
 
-            UIView* layout = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, fieldHeight)];
+            UIView* layout = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, fieldHeight + spacing + toggleSize)];
             layout.backgroundColor = [UIColor clearColor];
 
             TextField* input = [[TextField alloc] initWithFrame:CGRectMake(0, 0, width, fieldHeight)];
-            input.text = [NSString stringWithFormat:@"%s.gmd", getCurrentLevelName()];
+            input.text = [NSString stringWithFormat:@"%s.gdlvl", getCurrentLevelName()];
             input.textAlignment = UITextAlignmentCenter;
             [layout addSubview:input];
 
+            UILabel* gdlvlLabel = MakeLabel(@".gdlvl");
+            UILabel* gmdLabel = MakeLabel(@".gmd");
+            CGFloat start = width / 2.0f - (gdlvlLabel.frame.size.width + gmdLabel.frame.size.width + toggleSize * 2.0f + spacing) / 2.0f;
+            gdlvlLabel.frame = CGRectMake(start + toggleSize, fieldHeight + spacing, gdlvlLabel.frame.size.width, toggleSize);
+            gmdLabel.frame = CGRectMake(start + toggleSize * 2.0f + gdlvlLabel.frame.size.width + spacing,
+                fieldHeight + spacing, gmdLabel.frame.size.width, toggleSize);
+
+            RadioGroup* radioGroup = [[RadioGroup alloc] init];
+            ToggleView* gdlvlBtn = [[ToggleView alloc] initWithFrame:CGRectMake(start, fieldHeight + spacing, toggleSize, toggleSize)
+                radio:YES radioGroup:radioGroup];
+            gdlvlBtn.action = ^{
+                if ([[input.text pathExtension] length] > 0) input.text = [[input.text stringByDeletingPathExtension] stringByAppendingString:@".gdlvl"];
+            };
+            gdlvlBtn.data = @"gdlvl";
+            gdlvlBtn.selected = YES;
+
+            ToggleView* gmdBtn = [[ToggleView alloc] initWithFrame:CGRectMake(start + toggleSize + gdlvlLabel.frame.size.width + spacing,
+                fieldHeight + spacing, toggleSize, toggleSize) radio:YES radioGroup:radioGroup];
+            gmdBtn.data = @"gmd";
+            gmdBtn.action = ^{
+                if ([[input.text pathExtension] length] > 0) input.text = [[input.text stringByDeletingPathExtension] stringByAppendingString:@".gmd"];
+            };
+
+            [layout addSubview:gdlvlLabel];
+            [layout addSubview:gdlvlBtn];
+            [layout addSubview:gmdLabel];
+            [layout addSubview:gmdBtn];
+
             Dialog* dialog = [[Dialog alloc] init:@"File name" layout:layout];
             [dialog setButton:0 title:@"Export to..." handler:^{
-                showFileBrowser(@"gmd", YES, ^(NSString* dir) {
-                    exportGmd(CSTR([dir stringByAppendingPathComponent:[input.text lastPathComponent]]));
+                showFileBrowser(@"Select a folder", @"gdlvl", YES, ^(NSString* dir) {
+                    exportGmd(CSTR([dir stringByAppendingPathComponent:[input.text lastPathComponent]]),
+                        [[radioGroup getSelected].data isEqualToString:@"gmd"]);
                 });
             }];
             [dialog setButton:1 title:@"Cancel" handler:nil];

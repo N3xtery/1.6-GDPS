@@ -1,6 +1,6 @@
 Package: com.necytdamu.onesixgdps
 Name: 1.6 GDPS
-Version: 1.0.3
+Version: 1.0.4
 Architecture: iphoneos-arm
 Description: Geometry Dash 1.6 connected to a private server and including some modifications, such as custom songs, accounts and many other convenient features and fixes.
 Maintainer: N3xtery

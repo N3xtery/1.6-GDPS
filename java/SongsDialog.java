@@ -160,7 +160,7 @@ public class SongsDialog {
         usePathBtn.setText("...");
         usePathBtn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) {
-                new FileBrowser("mp3", true, new FileBrowser.Callback() {
+                new FileBrowser("Select a folder", "mp3", true, new FileBrowser.Callback() {
                     public void onSelected(File dir) {
                         updateSongsPath(dir, inputPath, false, levelSettings);
                         songsTablePopulate(table, levelSettings);
@@ -201,13 +201,15 @@ public class SongsDialog {
             public void onClick(View view) {
                 InputMethodManager imm = (InputMethodManager)OverlayUI.activity.getSystemService(Context.INPUT_METHOD_SERVICE);
                 imm.hideSoftInputFromWindow(idInput.getWindowToken(), 0);
-                loadingDlg = new AlertDialog.Builder(OverlayUI.activity).setTitle("Custom song").setMessage("Loading...").setPositiveButton("Cancel",
-                    new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialog, int which) {
-                            loadingDlg = null;
-                        }
-                    }).show();
-                findSongID(idInput.getText().toString(), table, levelSettings);
+                if (!idInput.getText().toString().isEmpty()) {
+                    loadingDlg = new AlertDialog.Builder(OverlayUI.activity).setTitle("Custom song").setMessage("Loading...").setPositiveButton("Cancel",
+                        new DialogInterface.OnClickListener() {
+                            public void onClick(DialogInterface dialog, int which) {
+                                loadingDlg = null;
+                            }
+                        }).show();
+                    findSongID(idInput.getText().toString(), table, levelSettings);
+                }
             }
         });
 

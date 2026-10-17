@@ -96,9 +96,11 @@ static int hookLevelSettingsShow(void* self, void* obj) {
     return origLevelSettingsShow(self, obj);
 }
 
+static std::string levelStr;
 static int (*origLevelSettingsHide)(void*);
 static int hookLevelSettingsHide(void* self) {
     showGroup("LevelSettings", false);
+    std::string().swap(levelStr);
     return origLevelSettingsHide(self);
 }
 
@@ -482,6 +484,12 @@ void importGmd(const char* pathC) {
             data.resize(length);
             fread(&data[0], 1, length, f);
             fclose(f);
+
+            if (strncmp(data.c_str(), "H4sI", 4) == 0) {
+                std::string dataDecoded = base64Decode(data.c_str());
+                data = gzipDecompress(dataDecoded.c_str(), dataDecoded.size());
+            }
+
             for (int i = 0; i < 20; i += 2) replaceSubStr(&data, gmdConverts[i + 1], gmdConverts[i]);
             char* dict = (char*)malloc(0xD4);
             dsDictCons(dict);
@@ -516,22 +524,61 @@ void importGmd(const char* pathC) {
     });
 }
 
-void exportGmd(const char* pathC) {
+static int levelLength = 0;
+#if defined(__i386__)
+static std::string (*getLevelStr)(void* self);
+static int getCurrentLevelLength() {
+    getLevelStr(editorLayer);
+#else
+static void (*getLevelStr)(std::string* out, void* self);
+int getCurrentLevelLength() {
+    std::string levelStr;
+    getLevelStr(&levelStr, editorLayer);
+#endif
+    int distance = *(int*)((char*)editorLayer + 0x164);
+    levelLength = (int)roundf((distance + 340.0f) / 311.0f);
+    return levelLength;
+}
+
+void exportGmd(const char* pathC, bool gmd) {
     std::string path = std::string(pathC);
-    queueOnCocosThread([path]() {
+    queueOnCocosThread([path, gmd]() {
         FILE* f = fopen(path.c_str(), "w");
         if (f) {
+            void* objectLayer = *(void**)((char*)editorLayer + 0x158);
+            memcpy((char*)currentLevel + 0x1b8 + 0x18, (char*)objectLayer + 0x2c + 0x18, 8); // editor location
+            *(float*)((char*)currentLevel + 0x1d8) = *(float*)((char*)objectLayer + 0x24); // editor zoom
+
             char* dict = (char*)malloc(0xD4);
             dsDictCons(dict);
             hookLevelWriteXml(currentLevel, dict);
-            #if defined(__i386__)
+
+#if defined(__i386__)
+            std::string levelStr = getLevelStr(editorLayer);
+#else
+            std::string levelStr;
+            getLevelStr(&levelStr, editorLayer);
+#endif
+            dictSetStrForKey(dict, "k4", &levelStr);
+            dictSetIntForKey(dict, "k23", levelLength < 10 ? 0 : std::min((levelLength / 30) + 1, 3));
+            void* levelSettings = *(void**)((char*)editorLayer + 0x160);
+            dictSetIntForKey(dict, "k8", *(int*)((char*)levelSettings + 0x130)); // song
+#if defined(__i386__)
             std::string data = dsDictToStr(dict);
-            #else
+#else
             std::string data;
             dsDictToStr(&data, dict);
-            #endif
-
+#endif
             for (int i = 0; i < 20; i += 2) replaceSubStr(&data, gmdConverts[i], gmdConverts[i + 1]);
+
+            std::string plist = "plist version=\"1.0\"";
+            size_t pos = data.find(plist);
+            if (pos != std::string::npos) data.insert(pos + plist.size(), " gjver=\"2.0\"");
+            if (!gmd) {
+                std::string dataCompressed = gzipCompress(data);
+                data = base64Encode(dataCompressed);
+            }
+
             fwrite(&data[0], 1, data.length(), f);
             fclose(f);
             free(dict);
@@ -544,20 +591,6 @@ const char* getCurrentLevelName() {
     return ((std::string*)((char*)currentLevel + 0x12C))->c_str();
 }
 
-#if defined(__i386__)
-static std::string (*getLevelStr)(void* self);
-static int getCurrentLevelLength() {
-    getLevelStr(editorLayer);
-#else
-static void (*getLevelStr)(std::string* out, void* self);
-int getCurrentLevelLength() {
-    std::string str;
-    getLevelStr(&str, editorLayer);
-#endif
-    int distance = *(int*)((char*)editorLayer + 0x164);
-    return (int)roundf((distance + 340.0f) / 311.0f);
-}
-
 #ifndef __APPLE__
 extern "C" JNIEXPORT void JNICALL
 Java_com_necytdamu_onesixgdps_OverlayUI_importGmd(JNIEnv* env, jclass, jstring pathJava) {
@@ -567,9 +600,9 @@ Java_com_necytdamu_onesixgdps_OverlayUI_importGmd(JNIEnv* env, jclass, jstring p
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_necytdamu_onesixgdps_OverlayUI_exportGmd(JNIEnv* env, jclass, jstring pathJava) {
+Java_com_necytdamu_onesixgdps_OverlayUI_exportGmd(JNIEnv* env, jclass, jstring pathJava, jboolean gmdJava) {
     const char* pathC = env->GetStringUTFChars(pathJava, nullptr);
-    exportGmd(pathC);
+    exportGmd(pathC, gmdJava != JNI_FALSE);
     env->ReleaseStringUTFChars(pathJava, pathC);
 }
 
@@ -581,6 +614,12 @@ Java_com_necytdamu_onesixgdps_OverlayUI_getCurrentLevelName(JNIEnv* env, jclass)
 extern "C" JNIEXPORT jint JNICALL
 Java_com_necytdamu_onesixgdps_OverlayUI_getCurrentLevelLength(JNIEnv* env, jclass) {
     return getCurrentLevelLength();
+}
+
+static void (*origCCDictSetObj)(void*, void*, std::string);
+static void hookCCDictSetObj(void* dict, void* obj, std::string key) {
+    if (!key[0]) return;
+    origCCDictSetObj(dict, obj, key);
 }
 #endif
 
@@ -605,7 +644,7 @@ static void* hookParseLevelObj(std::string str) {
     std::string third = str.substr(b, c - b);
     int id = atoi(second.c_str());
     double x = strtod(third.c_str(), nullptr);
-    if (id > 199 || x < 0) return nullptr;
+    if ((currentLevel && id == 142) || id > 199 || x < 0) return nullptr;
     return origParseLevelObj(str);
 }
 
@@ -783,6 +822,9 @@ JNI_OnLoad(JavaVM* vm, void* reserved) {
 
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN10GameObject16objectFromStringESs") | THUMB_BIT),
                   (void*)hookParseLevelObj, (void**)&origParseLevelObj);
+
+    ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN7cocos2d12CCDictionary9setObjectEPNS_8CCObjectERKSs") | THUMB_BIT),
+                  (void*)hookCCDictSetObj, (void**)&origCCDictSetObj);
 
     ZzHookReplace((void*)((uintptr_t)dlsym(handle, "_ZN9InfoLayer4initEP11GJGameLevel") | THUMB_BIT),
                   (void*)hookLevelInfoShow, (void**)&origLevelInfoShow);

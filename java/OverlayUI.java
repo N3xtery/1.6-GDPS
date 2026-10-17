@@ -12,6 +12,8 @@ import android.widget.FrameLayout;
 import android.widget.EditText;
 import android.text.InputType;
 import android.widget.TextView;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -53,7 +55,7 @@ public class OverlayUI {
     public static native void copyLevel();
     public static native void updatePercentageNative(int percentageType);
     public static native void importGmd(String path);
-    public static native void exportGmd(String path);
+    public static native void exportGmd(String path, boolean gmd);
     public static native String getCurrentLevelName();
     public static native int getCurrentLevelLength();
 
@@ -211,7 +213,7 @@ public class OverlayUI {
                 lp.leftMargin = dp(-3);
 
                 gmdImportBtn = new Button(activity);
-                gmdImportBtn.setText(".gmd");
+                gmdImportBtn.setText(".gdlvl");
                 percentBtn = new Button(activity);
                 updatePercentage();
                 songsBtn = new Button(activity);
@@ -235,7 +237,7 @@ public class OverlayUI {
 
                 gmdImportBtn.setOnClickListener(new View.OnClickListener() {
                     public void onClick(View view) {
-                        new FileBrowser("gmd", false, new FileBrowser.Callback() {
+                        new FileBrowser("Import .gdlvl or .gmd", "gdlvl", false, new FileBrowser.Callback() {
                             public void onSelected(File file) {
                                 importGmd(file.getAbsolutePath());
                             }
@@ -359,7 +361,7 @@ public class OverlayUI {
                 colorBtn = new Button(activity);
                 colorBtn.setText("RGB");
                 gmdExportBtn = new Button(activity);
-                gmdExportBtn.setText(".gmd");
+                gmdExportBtn.setText(".gdlvl");
 
                 offsetBtn.setOnClickListener(new View.OnClickListener() {
                     public void onClick(View view) {
@@ -393,9 +395,43 @@ public class OverlayUI {
 
                         final EditText input = new EditText(OverlayUI.activity);
                         input.setInputType(InputType.TYPE_CLASS_TEXT);
-                        input.setText(getCurrentLevelName() + ".gmd");
+                        input.setText(getCurrentLevelName() + ".gdlvl");
                         input.setGravity(Gravity.CENTER);
                         layout.addView(input);
+
+                        final RadioGroup radioGroup = new RadioGroup(OverlayUI.activity);
+                        radioGroup.setOrientation(LinearLayout.HORIZONTAL);
+                        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT);
+                        lp.gravity = Gravity.CENTER_HORIZONTAL;
+                        layout.addView(radioGroup, lp);
+
+                        RadioGroup.LayoutParams rlp = new RadioGroup.LayoutParams(RadioGroup.LayoutParams.WRAP_CONTENT,
+                            RadioGroup.LayoutParams.WRAP_CONTENT);
+                        rlp.setMargins(OverlayUI.dp(8), 0, OverlayUI.dp(8), 0);
+
+                        RadioButton gdlvlBtn = new RadioButton(OverlayUI.activity);
+                        gdlvlBtn.setId(0);
+                        gdlvlBtn.setText(".gdlvl");
+                        radioGroup.addView(gdlvlBtn, rlp);
+                        radioGroup.check(0);
+
+                        RadioButton gmdBtn = new RadioButton(OverlayUI.activity);
+                        gmdBtn.setId(1);
+                        gmdBtn.setText(".gmd");
+                        radioGroup.addView(gmdBtn, rlp);
+
+                        radioGroup.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
+                            @Override
+                            public void onCheckedChanged(RadioGroup group, int checkedId) {
+                                String filename = input.getText().toString();
+                                int pos = filename.lastIndexOf(".");
+                                if (pos != -1) {
+                                    if (checkedId == 0) input.setText(filename.substring(0, pos) + ".gdlvl");
+                                    else input.setText(filename.substring(0, pos) + ".gmd");
+                                }
+                            }
+                        });
 
                         AlertDialog.Builder builder = new AlertDialog.Builder(OverlayUI.activity);
                         builder.setTitle("File name");
@@ -405,9 +441,10 @@ public class OverlayUI {
                             public void onClick(DialogInterface dialog, int which) {
                                 final String filename = input.getText().toString();
                                 if (!filename.isEmpty()) {
-                                    new FileBrowser("gmd", true, new FileBrowser.Callback() {
+                                    final boolean gmd = radioGroup.getCheckedRadioButtonId() == 1;
+                                    new FileBrowser("Select a folder", "gdlvl", true, new FileBrowser.Callback() {
                                         public void onSelected(File dir) {
-                                            exportGmd(new File(dir, filename).getAbsolutePath());
+                                            exportGmd(new File(dir, filename).getAbsolutePath(), gmd);
                                         }
                                     });
                                 }
