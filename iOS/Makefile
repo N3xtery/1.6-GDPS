@@ -1,6 +1,6 @@
 ARCHS = armv7 armv7s
 TARGET := iphone:clang:6.1:4.3
-INSTALL_TARGET_PROCESSES = geometryjump
+INSTALL_TARGET_PROCESSES = Onesixgdps
 THEOS_DEVICE_IP = 192.168.31.164
 
 include $(THEOS)/makefiles/common.mk

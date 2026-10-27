@@ -1,7 +1,29 @@
 #import "iOSBridge.h"
 #import <AVFoundation/AVFoundation.h>
+#import <substrate.h>
+
+static NSUUID* (*origGetVendor)(id, SEL);
+static NSUUID* hookGetVendor(id self, SEL _cmd) {
+    NSUUID* u = origGetVendor(self, _cmd);
+    if (u) return u;
+    static NSUUID* fallback;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSUserDefaults* d = [NSUserDefaults standardUserDefaults];
+        NSString* s = [d stringForKey:@"OnesixgdpsVendorID"];
+        NSUUID* n = s ? [[NSUUID alloc] initWithUUIDString:s] : nil;
+        if (!n) {
+            n = [[NSUUID alloc] init];
+            [d setObject:[n UUIDString] forKey:@"OnesixgdpsVendorID"];
+            [d synchronize];
+        }
+        fallback = n;
+    });
+    return fallback;
+}
 
 %ctor {
+    MSHookMessageEx([UIDevice class], @selector(identifierForVendor), (IMP)hookGetVendor, (IMP*)&origGetVendor);
     iOSSetupNative();
 }
 
